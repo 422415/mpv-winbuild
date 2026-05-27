@@ -206,9 +206,6 @@ jobs:
           echo "cache_suffix=$(date "+%Y-%m-%d")-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_ENV
           sed -i '/ccache_conf.in/d'  mpv-winbuild-cmake/CMakeLists.txt
           sed -i '/ccache/d' mpv-winbuild-cmake/exec.in
-          # Use the-database/mpv as the mpv source (carries the seek-speedup patch)
-          sed -i 's|mpv-player/mpv\.git|the-database/mpv.git|g' \
-              mpv-winbuild-cmake/packages/mpv.cmake
 
       - name: Lookup Toolchain Cache
         id: lookup_toolchain
@@ -394,6 +391,12 @@ jobs:
           if [ "${{ matrix.lgpl }}" = "true" ]; then
             git am --3way ../compile-lgpl-libmpv.patch
           fi
+          # Use the-database/mpv as the mpv source (carries the seek-speedup
+          # patch). Must run AFTER zhongfly's patch series (they also touch
+          # mpv.cmake) and BEFORE the build, so commit as a normal change.
+          sed -i 's|mpv-player/mpv\.git|the-database/mpv.git|g' packages/mpv.cmake
+          git add packages/mpv.cmake && \
+            git -c user.name=ci -c user.email=ci@local commit -m "redirect mpv source"
           bash ../build.sh -t '${{ matrix.bit }}' -c '${{ inputs.compiler }}' -s "${{ matrix.lgpl == true && 'true' || 'false' }}"
       - name: Collect logs
         if: ${{ always() }}

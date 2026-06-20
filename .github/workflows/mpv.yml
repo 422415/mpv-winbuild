@@ -397,6 +397,12 @@ jobs:
           sed -i 's|mpv-player/mpv\.git|the-database/mpv.git|g' packages/mpv.cmake
           git add packages/mpv.cmake && \
             git -c user.name=ci -c user.email=ci@local commit -m "redirect mpv source"
+          # Use the-database/libass (carries the multithreaded-rendering work)
+          # and enable threading so --sub-ass-render-threads is live.
+          sed -i 's|libass/libass\.git|the-database/libass.git|g' packages/libass.cmake
+          sed -i 's|-Dlibunibreak=enabled|-Dlibunibreak=enabled\n        -Dthreads=enabled|' packages/libass.cmake
+          git add packages/libass.cmake && \
+            git -c user.name=ci -c user.email=ci@local commit -m "redirect libass source"
           bash ../build.sh -t '${{ matrix.bit }}' -c '${{ inputs.compiler }}' -s "${{ matrix.lgpl == true && 'true' || 'false' }}"
       - name: Collect logs
         if: ${{ always() }}

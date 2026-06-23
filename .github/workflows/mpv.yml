@@ -1,5 +1,5 @@
 name: MPV
-run-name: "${{ github.event_name == 'push' && 'codex 8k subtitle no-upscale final (clang)' || github.event.inputs.run_name != '' && format('{0} ({1})', github.event.inputs.run_name, github.event.inputs.compiler) || github.event.inputs.prs != '' && format('{0}[{2}] ({1})', github.workflow, github.event.inputs.compiler, github.event.inputs.prs) || format('{0} ({1})', github.workflow, github.event.inputs.compiler) }}"
+run-name: "codex 8k subtitle no-upscale final (clang)"
 
 permissions:
   actions: write
@@ -78,18 +78,18 @@ on:
         default: ''
 
 env:
-  CODEX_BUILD_TARGET: ${{ github.event_name == 'push' && '64bit' || github.event.inputs.build_target || '64bit' }}
-  CODEX_LGPL: ${{ github.event_name == 'push' && 'false' || github.event.inputs.lgpl }}
-  CODEX_COMPILER: ${{ github.event_name == 'push' && 'clang' || github.event.inputs.compiler || 'clang' }}
-  CODEX_NEEDCLEAN: ${{ github.event_name == 'push' && 'true' || github.event.inputs.needclean }}
-  CODEX_NO_SAVE_CACHE: ${{ github.event_name == 'push' && 'true' || github.event.inputs.no_save_cache }}
-  CODEX_RELEASE: ${{ github.event_name == 'push' && 'false' || github.event.inputs.release }}
-  CODEX_COMMAND: ${{ github.event.inputs.command || '' }}
-  CODEX_PRS: ${{ github.event.inputs.prs || '' }}
-  CODEX_MPV_REPO: ${{ github.event_name == 'push' && '422415/mpv' || github.event.inputs.mpv_repo || 'the-database/mpv' }}
-  CODEX_MPV_REF: ${{ github.event_name == 'push' && 'codex/osd-atlas-reuse-8k' || github.event.inputs.mpv_ref || '' }}
-  CODEX_LIBASS_REPO: ${{ github.event_name == 'push' && '422415/libass' || github.event.inputs.libass_repo || 'the-database/libass' }}
-  CODEX_LIBASS_REF: ${{ github.event_name == 'push' && 'codex/ass-blur-change-detect' || github.event.inputs.libass_ref || '' }}
+  CODEX_BUILD_TARGET: 64bit
+  CODEX_LGPL: "false"
+  CODEX_COMPILER: clang
+  CODEX_NEEDCLEAN: "true"
+  CODEX_NO_SAVE_CACHE: "true"
+  CODEX_RELEASE: "false"
+  CODEX_COMMAND: ""
+  CODEX_PRS: ""
+  CODEX_MPV_REPO: 422415/mpv
+  CODEX_MPV_REF: codex/osd-atlas-reuse-8k
+  CODEX_LIBASS_REPO: 422415/libass
+  CODEX_LIBASS_REF: codex/ass-blur-change-detect
 
 jobs:
   params:

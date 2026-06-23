@@ -57,6 +57,22 @@ on:
       run_name:
         description: 'The name displayed in the list of workflow runs'
         required: false
+      mpv_repo:
+        description: 'GitHub owner/repo for mpv'
+        required: false
+        default: 'the-database/mpv'
+      mpv_ref:
+        description: 'Optional ref for the-database/mpv'
+        required: false
+        default: ''
+      libass_repo:
+        description: 'GitHub owner/repo for libass'
+        required: false
+        default: 'the-database/libass'
+      libass_ref:
+        description: 'Optional ref for the-database/libass'
+        required: false
+        default: ''
 
 jobs:
   params:
@@ -391,15 +407,23 @@ jobs:
           if [ "${{ matrix.lgpl }}" = "true" ]; then
             git am --3way ../compile-lgpl-libmpv.patch
           fi
-          # Use the-database/mpv as the mpv source (carries the seek-speedup
-          # patch). Must run AFTER zhongfly's patch series (they also touch
+          # Use the configured mpv source (the-database/mpv by default, which
+          # carries the seek-speedup patch). Must run AFTER zhongfly's patch
+          # series (they also touch
           # mpv.cmake) and BEFORE the build, so commit as a normal change.
-          sed -i 's|mpv-player/mpv\.git|the-database/mpv.git|g' packages/mpv.cmake
+          sed -i 's|mpv-player/mpv\.git|${{ inputs.mpv_repo }}.git|g' packages/mpv.cmake
+          if [ -n "${{ inputs.mpv_ref }}" ]; then
+            sed -i "/GIT_REPOSITORY .*mpv.git/a\    GIT_TAG ${{ inputs.mpv_ref }}" packages/mpv.cmake
+          fi
           git add packages/mpv.cmake && \
             git -c user.name=ci -c user.email=ci@local commit -m "redirect mpv source"
-          # Use the-database/libass (carries the multithreaded-rendering work)
-          # and enable threading so --sub-ass-render-threads is live.
-          sed -i 's|libass/libass\.git|the-database/libass.git|g' packages/libass.cmake
+          # Use the configured libass source (the-database/libass by default,
+          # which carries the multithreaded-rendering work) and enable
+          # threading so --sub-ass-render-threads is live.
+          sed -i 's|libass/libass\.git|${{ inputs.libass_repo }}.git|g' packages/libass.cmake
+          if [ -n "${{ inputs.libass_ref }}" ]; then
+            sed -i "/GIT_REPOSITORY .*libass.git/a\    GIT_TAG ${{ inputs.libass_ref }}" packages/libass.cmake
+          fi
           sed -i 's|-Dlibunibreak=enabled|-Dlibunibreak=enabled\n        -Dthreads=enabled|' packages/libass.cmake
           git add packages/libass.cmake && \
             git -c user.name=ci -c user.email=ci@local commit -m "redirect libass source"

@@ -81,7 +81,7 @@ env:
   CODEX_BUILD_TARGET: 64bit
   CODEX_LGPL: "false"
   CODEX_COMPILER: clang
-  CODEX_NEEDCLEAN: "true"
+  CODEX_NEEDCLEAN: "false"
   CODEX_NO_SAVE_CACHE: "true"
   CODEX_RELEASE: "false"
   CODEX_COMMAND: ""
@@ -450,9 +450,13 @@ jobs:
           # repository/ref instead of resetting the cached worktree.
           if [ "${{ env.CODEX_MPV_REPO }}" != "the-database/mpv" ] || [ -n "${{ env.CODEX_MPV_REF }}" ]; then
             rm -rf src_packages/mpv
+            rm -rf build${{ matrix.bit }}/packages/mpv-prefix
+            rm -rf build${{ matrix.bit }}/packages/mpv-packaging-prefix
+            rm -rf build${{ matrix.bit }}/packages/mpv-release-prefix
           fi
           if [ "${{ env.CODEX_LIBASS_REPO }}" != "the-database/libass" ] || [ -n "${{ env.CODEX_LIBASS_REF }}" ]; then
             rm -rf src_packages/libass
+            rm -rf build${{ matrix.bit }}/packages/libass-prefix
           fi
           bash ../build.sh -t '${{ matrix.bit }}' -c '${{ env.CODEX_COMPILER }}' -s "${{ matrix.lgpl == true && 'true' || 'false' }}"
       - name: Collect logs

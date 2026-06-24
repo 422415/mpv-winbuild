@@ -86,10 +86,10 @@ env:
   CODEX_RELEASE: "false"
   CODEX_COMMAND: ""
   CODEX_PRS: ""
-  CODEX_MPV_REPO: 422415/mpv
-  CODEX_MPV_REF: codex/osd-atlas-reuse-8k
-  CODEX_LIBASS_REPO: 422415/libass
-  CODEX_LIBASS_REF: codex/ass-blur-change-detect
+  CODEX_MPV_REPO: the-database/mpv
+  CODEX_MPV_REF: master
+  CODEX_LIBASS_REPO: the-database/libass
+  CODEX_LIBASS_REF: master
 
 jobs:
   params:

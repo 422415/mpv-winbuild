@@ -13,6 +13,14 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+      - name: Start Windows audio services for playback tests
+        shell: pwsh
+        run: |
+          # Server runners have no speakers, but device notification cleanup
+          # still needs the audio services used by ordinary Windows desktops.
+          Start-Service AudioEndpointBuilder
+          Start-Service Audiosrv
+          Get-Service AudioEndpointBuilder, Audiosrv
       - uses: actions/checkout@v4
         with:
           repository: 422415/mpv

@@ -64,6 +64,7 @@ env = dict(os.environ, PATH=str(system))
 for name, arguments in (
     ('version', ['--version']),
     ('null-playback', ['--no-config', '--vo=null', '--ao=null', '--frames=2',
+                       '--msg-level=all=v,ao/wasapi=debug',
                        'av://lavfi:color=c=black:s=640x360:r=24:d=1']),
 ):
     result = subprocess.run([str(player), *arguments], capture_output=True,

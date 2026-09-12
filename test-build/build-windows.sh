@@ -6,6 +6,13 @@ prefix="$(cygpath -m "$PWD/native-prefix")"
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
 export PATH="$PWD/native-prefix/bin:$PATH"
 
+# Git for Windows checked out these trees; refresh MSYS Git's stat cache so
+# version generation does not label an unchanged source tree as dirty.
+git -C mpv-source update-index --refresh
+git -C libass-source update-index --refresh
+git -C mpv-source diff --exit-code
+git -C libass-source diff --exit-code
+
 meson setup build-ass libass-source --prefix="$prefix" --buildtype=release \
     --default-library=shared --wrap-mode=nodownload -Ddebug=true \
     -Dthreads=enabled -Ddirectwrite=enabled -Dfontconfig=disabled \

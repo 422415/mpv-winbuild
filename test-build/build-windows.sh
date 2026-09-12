@@ -6,12 +6,14 @@ prefix="$(cygpath -m "$PWD/native-prefix")"
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
 export PATH="$PWD/native-prefix/bin:$PATH"
 
-# Git for Windows checked out these trees; refresh MSYS Git's stat cache so
-# version generation does not label an unchanged source tree as dirty.
-git -C mpv-source update-index --refresh
-git -C libass-source update-index --refresh
-git -C mpv-source diff --exit-code
-git -C libass-source diff --exit-code
+# Git for Windows checks out CRLF text, while MSYS Git has a separate global
+# config. Match that checkout policy before verifying either source tree.
+for source in mpv-source libass-source; do
+    git -C "$source" config core.autocrlf true
+    git -C "$source" config core.filemode false
+    git -C "$source" update-index --refresh
+    git -C "$source" diff --exit-code
+done
 
 meson setup build-ass libass-source --prefix="$prefix" --buildtype=release \
     --default-library=shared --wrap-mode=nodownload -Ddebug=true \

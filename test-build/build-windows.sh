@@ -20,10 +20,15 @@ meson setup build-mpv mpv-source --prefix="$prefix" --buildtype=release \
     -Dmanpage-build=disabled -Dhtml-build=disabled \
     -Dpdf-build=disabled
 meson compile -C build-mpv -j 4
-meson test -C build-mpv --print-errorlogs
 meson install -C build-mpv
 
 python test-build/stage-native.py "$prefix" "$(cygpath -m /ucrt64)" native-output
+# Meson prepends dependency directories to PATH on Windows. That can select
+# MSYS2's stock libass instead of the fork whose extra symbols mpv imports.
+# Co-locate the final bundle's DLLs with each test executable so these tests
+# exercise exactly the runtime dependencies being shipped.
+python test-build/prepare-test-runtime.py
+meson test -C build-mpv --print-errorlogs
 pacman -Q > native-output/build-info/msys2-packages.txt
 git -C mpv-source rev-parse HEAD > native-output/build-info/mpv-commit.txt
 git -C libass-source rev-parse HEAD > native-output/build-info/libass-commit.txt

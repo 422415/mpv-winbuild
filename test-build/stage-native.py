@@ -14,7 +14,7 @@ output.mkdir(parents=True, exist_ok=True)
 info = output / 'build-info'
 info.mkdir(exist_ok=True)
 config = Path('build-mpv/config.h').read_text()
-for feature in ('D3D11', 'VULKAN', 'ASS_RENDER_THREAD_COUNT',
+for feature in ('D3D11', 'VULKAN', 'CUDA_HWACCEL', 'CUDA_INTEROP', 'ASS_RENDER_THREAD_COUNT',
                 'ASS_BLUR_DEFERRED', 'ASS_COMPOSITE_DEFERRED', 'ASS_OUTLINE_DEFERRED'):
     if not re.search(rf'^#define HAVE_{feature} 1$', config, re.M):
         raise RuntimeError(f'Required AJN feature missing: {feature}')
@@ -71,6 +71,17 @@ for name, arguments in (
                             timeout=30, env=env)
     (info / (name + '.txt')).write_text(result.stdout + result.stderr, encoding='utf-8')
     if result.returncode:
+        debugger = shutil.which('gdb')
+        if debugger:
+            try:
+                trace = subprocess.run([debugger, '--batch', '-ex', 'set pagination off',
+                    '-ex', 'run', '-ex', 'thread apply all bt', '--args', str(player), *arguments],
+                    capture_output=True, text=True, encoding='utf-8', errors='replace',
+                    timeout=60, env=env)
+                (info / (name + '-backtrace.txt')).write_text(
+                    trace.stdout + trace.stderr, encoding='utf-8')
+            except subprocess.TimeoutExpired:
+                (info / (name + '-backtrace.txt')).write_text('Debugger timed out.\n')
         raise RuntimeError(f'{name} failed: {result.returncode}; see build-info')
 
 (info / 'runtime-origins.json').write_text(json.dumps(copied, indent=2) + '\n')

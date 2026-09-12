@@ -7,7 +7,7 @@ export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
 export PATH="$PWD/native-prefix/bin:$PATH"
 
 meson setup build-ass libass-source --prefix="$prefix" --buildtype=release \
-    --default-library=shared --wrap-mode=nodownload \
+    --default-library=shared --wrap-mode=nodownload -Ddebug=true \
     -Dthreads=enabled -Ddirectwrite=enabled -Dfontconfig=disabled \
     -Dlibunibreak=enabled -Dtest=disabled -Dcompare=disabled \
     -Dprofile=disabled -Dcheckasm=disabled
@@ -15,7 +15,8 @@ meson compile -C build-ass -j 4
 meson install -C build-ass
 
 meson setup build-mpv mpv-source --prefix="$prefix" --buildtype=release \
-    --wrap-mode=nodownload -Dlibmpv=true -Dcplayer=true -Dtests=true \
+    --wrap-mode=nodownload -Dlibmpv=true -Dcplayer=true -Dtests=true -Ddebug=true \
+    -Dcuda-hwaccel=enabled -Dcuda-interop=enabled \
     -Dlua=luajit -Djavascript=enabled -Dd3d11=enabled -Dvulkan=enabled \
     -Dmanpage-build=disabled -Dhtml-build=disabled \
     -Dpdf-build=disabled

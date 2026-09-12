@@ -32,11 +32,13 @@ jobs:
           install: >-
             git
             mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-gdb
             mingw-w64-ucrt-x86_64-meson
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers
             mingw-w64-ucrt-x86_64-libplacebo
             mingw-w64-ucrt-x86_64-freetype
             mingw-w64-ucrt-x86_64-fribidi
@@ -66,3 +68,11 @@ jobs:
             build-mpv/meson-logs/
             native-output/build-info/
           retention-days: 14
+      - name: Upload diagnostic binaries on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ajn-3.6.1-test.1-native-diagnostic
+          path: native-output/
+          if-no-files-found: ignore
+          retention-days: 3

@@ -63,7 +63,7 @@ player = output.resolve() / 'mpv.exe'
 env = dict(os.environ, PATH=str(system))
 for name, arguments in (
     ('version', ['--version']),
-    ('null-playback', ['--no-config', '--vo=null', '--ao=null', '--frames=2',
+    ('null-playback', ['--no-config', '--vo=null', '--ao=null', '--frames=2', '--load-select=no',
                        '--msg-level=all=v,ao/wasapi=debug',
                        'av://lavfi:color=c=black:s=640x360:r=24:d=1']),
 ):
@@ -84,6 +84,25 @@ for name, arguments in (
             except subprocess.TimeoutExpired:
                 (info / (name + '-backtrace.txt')).write_text('Debugger timed out.\n')
         raise RuntimeError(f'{name} failed: {result.returncode}; see build-info')
+
+# The Server runner has no audio endpoint. Keep its default-script/WASAPI
+# teardown check visible, alongside stock MSYS2 mpv as an independent control.
+# Desktop playback (including the default scripts) is validated separately on
+# real Windows hardware before distributing a complete AJN test package.
+desktop_results = []
+desktop_args = ['--no-config', '--vo=null', '--ao=null', '--frames=2',
+                '--msg-level=all=v,ao/wasapi=debug',
+                'av://lavfi:color=c=black:s=640x360:r=24:d=1']
+for name, executable in [('ajn', player), ('msys2-stock', runtime / 'bin/mpv.exe')]:
+    probe = subprocess.run([str(executable), *desktop_args], capture_output=True,
+        text=True, encoding='utf-8', errors='replace', timeout=30, env=env)
+    (info / (name + '-server-desktop-probe.txt')).write_text(
+        probe.stdout + probe.stderr, encoding='utf-8')
+    desktop_results.append({'player': name, 'exit_code': probe.returncode,
+        'passed': probe.returncode == 0})
+(info / 'server-desktop-probes.json').write_text(json.dumps(desktop_results, indent=2) + '\n')
+if any(not r['passed'] for r in desktop_results):
+    print('WARNING: Server desktop audio cleanup check failed; see server-desktop-probes.json.')
 
 (info / 'runtime-origins.json').write_text(json.dumps(copied, indent=2) + '\n')
 hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()

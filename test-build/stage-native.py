@@ -38,7 +38,8 @@ while queue:
         raise FileNotFoundError(source)
     shutil.copy2(source, output / source.name)
     copied[key] = str(source)
-    imports = subprocess.check_output(['objdump', '-p', str(source)], text=True)
+    imports = subprocess.check_output(['objdump', '-p', str(source)], text=True,
+                                      encoding='utf-8', errors='replace')
     for name in re.findall(r'DLL Name:\s*(\S+)', imports):
         key = name.lower()
         candidate = next((available[d][key] for d in search if key in available[d]), None)
@@ -66,7 +67,8 @@ for name, arguments in (
                        'av://lavfi:color=c=black:s=640x360:r=24:d=1']),
 ):
     result = subprocess.run([str(player), *arguments], capture_output=True,
-                            text=True, timeout=30, env=env)
+                            text=True, encoding='utf-8', errors='replace',
+                            timeout=30, env=env)
     (info / (name + '.txt')).write_text(result.stdout + result.stderr, encoding='utf-8')
     if result.returncode:
         raise RuntimeError(f'{name} failed: {result.returncode}; see build-info')

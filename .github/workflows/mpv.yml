@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: 422415/mpv
-          ref: 056b89031324131e662e3c8f03cece9321f67fe4
+          ref: 7c3289b5a9e1e14438fe60dc80786914ec965c31
           path: mpv-source
           fetch-depth: 1
       - uses: actions/checkout@v4

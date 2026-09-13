@@ -1,0 +1,112 @@
+name: AJN Windows native test
+run-name: AJN native test - ${{ inputs.mpv_repository }} @ ${{ inputs.mpv_ref }}
+on:
+  workflow_dispatch:
+    inputs:
+      mpv_repository:
+        description: mpv source repository (owner/name)
+        type: string
+        default: the-database/mpv
+        required: true
+      mpv_ref:
+        description: mpv branch, tag, or full commit to test
+        type: string
+        default: master
+        required: true
+      libass_repository:
+        description: libass source repository (owner/name)
+        type: string
+        default: the-database/libass
+        required: true
+      libass_ref:
+        description: libass branch, tag, or full commit to test
+        type: string
+        default: master
+        required: true
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start Windows audio services for playback tests
+        shell: pwsh
+        run: |
+          # Server runners have no speakers, but device notification cleanup
+          # still needs the audio services used by ordinary Windows desktops.
+          Start-Service AudioEndpointBuilder
+          Start-Service Audiosrv
+          Get-Service AudioEndpointBuilder, Audiosrv
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.mpv_repository }}
+          ref: ${{ inputs.mpv_ref }}
+          path: mpv-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.libass_repository }}
+          ref: ${{ inputs.libass_ref }}
+          path: libass-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-gdb
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-mpv
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers
+            mingw-w64-ucrt-x86_64-libplacebo
+            mingw-w64-ucrt-x86_64-freetype
+            mingw-w64-ucrt-x86_64-fribidi
+            mingw-w64-ucrt-x86_64-harfbuzz
+            mingw-w64-ucrt-x86_64-libunibreak
+            mingw-w64-ucrt-x86_64-luajit
+            mingw-w64-ucrt-x86_64-mujs
+            mingw-w64-ucrt-x86_64-libarchive
+            mingw-w64-ucrt-x86_64-lcms2
+            mingw-w64-ucrt-x86_64-vulkan-headers
+      - name: Build and test pinned native components
+        run: bash test-build/build-windows.sh
+      - name: Upload native test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ajn-native-test-win-x64
+          path: native-output/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ajn-native-test-logs
+          path: |
+            build-ass/meson-logs/
+            build-mpv/meson-logs/
+            native-output/build-info/
+          retention-days: 14
+      - name: Upload diagnostic binaries on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ajn-native-test-diagnostic
+          path: native-output/
+          if-no-files-found: ignore
+          retention-days: 3

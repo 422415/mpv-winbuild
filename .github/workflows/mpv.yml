@@ -1,5 +1,5 @@
-name: AJN 3.6.1 Windows test
-run-name: AJN 3.6.1-test.1 native build
+name: AJN addon native integration
+run-name: AJN addon native media build
 on:
   workflow_dispatch:
 permissions:
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: 422415/mpv
-          ref: 21d5e10e5ca27a4b8a6dd4a8bbb02062bb8e6e24
+          ref: 056b89031324131e662e3c8f03cece9321f67fe4
           path: mpv-source
           fetch-depth: 1
       - uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
       - name: Upload native test package
         uses: actions/upload-artifact@v4
         with:
-          name: ajn-3.6.1-test.1-native-win-x64
+          name: ajn-addon-native-win-x64
           path: native-output/
           if-no-files-found: error
           retention-days: 14
@@ -71,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ajn-3.6.1-test.1-native-logs
+          name: ajn-addon-native-logs
           path: |
             build-ass/meson-logs/
             build-mpv/meson-logs/
@@ -81,7 +81,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ajn-3.6.1-test.1-native-diagnostic
+          name: ajn-addon-native-diagnostic
           path: native-output/
           if-no-files-found: ignore
           retention-days: 3

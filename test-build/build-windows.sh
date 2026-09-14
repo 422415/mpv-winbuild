@@ -33,6 +33,11 @@ meson compile -C build-mpv -j 4
 meson install -C build-mpv
 
 python test-build/stage-native.py "$prefix" "$(cygpath -m /ucrt64)" native-output
+if [ -f mpv-source/etc/ajn-native-capabilities.json ]; then
+    python test-build/produce-native-metadata.py --source mpv-source --libass-source libass-source \
+        --build build-mpv --binaries native-output --linkage shared \
+        --output native-output/build-info/mpv-addon-native-x86_64.json
+fi
 # Meson prepends dependency directories to PATH on Windows. That can select
 # MSYS2's stock libass instead of the fork whose extra symbols mpv imports.
 # Co-locate the final bundle's DLLs with each test executable so these tests

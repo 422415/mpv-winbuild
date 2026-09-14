@@ -1,6 +1,9 @@
 name: AJN Windows native test
 run-name: AJN native test - ${{ inputs.mpv_repository }} @ ${{ inputs.mpv_ref }}
 on:
+  push:
+    branches: [integration/addons]
+    paths: ['test-build/**', '.github/workflows/ajn-test-windows.yml']
   workflow_dispatch:
     inputs:
       mpv_repository:
@@ -46,15 +49,15 @@ jobs:
           Get-Service AudioEndpointBuilder, Audiosrv
       - uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.mpv_repository }}
-          ref: ${{ inputs.mpv_ref }}
+          repository: ${{ inputs.mpv_repository || format('{0}/mpv', github.repository_owner) }}
+          ref: ${{ inputs.mpv_ref || github.ref_name }}
           path: mpv-source
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.libass_repository }}
-          ref: ${{ inputs.libass_ref }}
+          repository: ${{ inputs.libass_repository || 'the-database/libass' }}
+          ref: ${{ inputs.libass_ref || 'master' }}
           path: libass-source
           fetch-depth: 1
           persist-credentials: false

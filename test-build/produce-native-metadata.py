@@ -40,6 +40,10 @@ def produce(source, libass_source, build, binaries, output, linkage):
     features = sorted(re.findall(r"^#define HAVE_(\w+) 1$", config, re.M))
     if not set(contract["requiredFeatures"]).issubset(features):
         raise ValueError(f"Missing native features: {set(contract['requiredFeatures']) - set(features)}")
+    options = {e["name"]: e["value"] for e in json.loads((configs[0].parent / "meson-info/intro-buildoptions.json").read_text())}
+    for name, value in contract["requiredOptions"].items():
+        if options.get(name) != value:
+            raise ValueError(f"Required build option differs: {name}")
     files = {}
     for folder in binaries:
         for p in folder.rglob("*"):
@@ -80,6 +84,7 @@ def produce(source, libass_source, build, binaries, output, linkage):
                      "runId": os.environ.get("GITHUB_RUN_ID", "local")},
         "sources": {"mpv": source_commit, "libass": ass_commit},
         "configurationSha256": digest(configs[0]), "features": features,
+        "buildOptions": {n: options[n] for n in contract["requiredOptions"]},
         "files": {n: digest(p) for n, p in sorted(files.items())}, "imports": imports,
     }
     output.parent.mkdir(parents=True, exist_ok=True)

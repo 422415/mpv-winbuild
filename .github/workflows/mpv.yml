@@ -9,6 +9,21 @@ permissions:
 on: 
   workflow_dispatch:
     inputs:
+      mpv_repository:
+        description: "mpv source repository (owner/repo)"
+        required: false
+        default: "the-database/mpv"
+        type: string
+      libass_repository:
+        description: "libass source repository (owner/repo)"
+        required: false
+        default: "the-database/libass"
+        type: string
+      addon_metadata:
+        description: "Produce addon capability evidence (64bit GPL builds only)"
+        required: false
+        default: false
+        type: boolean
       mpv_ref:
         description: "the-database/mpv ref (branch/tag/sha) to build"
         required: false
@@ -72,6 +87,8 @@ jobs:
   params:
     runs-on: ubuntu-latest
     outputs:
+      mpv_repository: ${{ steps.script.outputs.mpv_repository }}
+      libass_repository: ${{ steps.script.outputs.libass_repository }}
       sha: ${{ steps.script.outputs.sha }}
       libass_sha: ${{ steps.script.outputs.libass_sha }}
       matrix: ${{ steps.script.outputs.matrix }}
@@ -80,19 +97,32 @@ jobs:
     steps:
       - id: script
         uses: actions/github-script@v9
+        env:
+          MPV_REPOSITORY: ${{ inputs.mpv_repository || 'the-database/mpv' }}
+          LIBASS_REPOSITORY: ${{ inputs.libass_repository || 'the-database/libass' }}
+          MPV_REF: ${{ inputs.mpv_ref || 'master' }}
+          LIBASS_REF: ${{ inputs.libass_ref || 'master' }}
         with:
           script: |
+            function source(name) {
+              const repository = process.env[name];
+              if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) throw new Error('Expected owner/repo');
+              const [owner, repo] = repository.split('/');
+              return { owner, repo };
+            }
+            core.setOutput('mpv_repository', process.env.MPV_REPOSITORY);
+            core.setOutput('libass_repository', process.env.LIBASS_REPOSITORY);
+            if (${{ inputs.addon_metadata }} && ('${{ inputs.build_target }}' !== '64bit' || ${{ inputs.lgpl }} || '${{ inputs.prs }}' !== ''))
+              throw new Error('Addon metadata requires one 64bit GPL build without additional PR patches');
             const commit = await github.rest.repos.getCommit({
-              owner: 'the-database',
-              repo: 'mpv',
-              ref: `${{ inputs.mpv_ref || 'master' }}`
+              ...source('MPV_REPOSITORY'),
+              ref: process.env.MPV_REF
             })
             core.setOutput('sha', String(commit.data.sha))
 
             const libass_commit = await github.rest.repos.getCommit({
-              owner: 'the-database',
-              repo: 'libass',
-              ref: `${{ inputs.libass_ref || 'master' }}`
+              ...source('LIBASS_REPOSITORY'),
+              ref: process.env.LIBASS_REF
             })
             core.setOutput('libass_sha', String(libass_commit.data.sha))
             
@@ -192,7 +222,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/archlinux/archlinux:base-devel
-    continue-on-error: true
+    continue-on-error: ${{ inputs.addon_metadata != true }}
     strategy:
       matrix: ${{ fromJson(needs.params.outputs.matrix) }}
 
@@ -399,8 +429,17 @@ jobs:
       - name: Build
         id: build
         shell: bash
+        env:
+          AJN_MPV_REPOSITORY: ${{ needs.params.outputs.mpv_repository }}
+          AJN_LIBASS_REPOSITORY: ${{ needs.params.outputs.libass_repository }}
+          AJN_MPV_SHA: ${{ needs.params.outputs.sha }}
+          AJN_LIBASS_SHA: ${{ needs.params.outputs.libass_sha }}
+          AJN_METADATA_TOOL: ${{ github.workspace }}/test-build/produce-native-metadata.py
         run: |
           chmod +x build.sh
+          if [ '${{ inputs.addon_metadata }}' = 'true' ]; then
+            python test-build/prepare-addon-build.py
+          fi
           cd mpv-winbuild-cmake
           if [[ "$(ls -A ../patch/*.patch)" ]]; then
             for patch in ../patch/*.patch ; do
@@ -413,8 +452,8 @@ jobs:
           # Use the-database/mpv as the mpv source (carries the seek-speedup
           # patch). Must run AFTER zhongfly's patch series (they also touch
           # mpv.cmake) and BEFORE the build, so commit as a normal change.
-          sed -i 's|mpv-player/mpv\.git|the-database/mpv.git|g' packages/mpv.cmake
-          sed -i 's|\(GIT_REPOSITORY https://github.com/the-database/mpv.git\)|\1\n    GIT_TAG ${{ needs.params.outputs.sha }}|' packages/mpv.cmake
+          sed -i "s|mpv-player/mpv\.git|$AJN_MPV_REPOSITORY.git|g" packages/mpv.cmake
+          sed -i "s|\(GIT_REPOSITORY https://github.com/$AJN_MPV_REPOSITORY.git\)|\1\n    GIT_TAG $AJN_MPV_SHA|" packages/mpv.cmake
           # The Source Cache restore is not gated on needclean and mpv.cmake sets
           # UPDATE_COMMAND "", so a cached mpv checkout would ignore the GIT_TAG
           # above. Drop the mpv source + ExternalProject subtree so the pinned ref
@@ -426,8 +465,8 @@ jobs:
           # Use the-database/libass (carries the multithreaded rendering + deferred-blur
           # work) and enable the threads feature so --sub-ass-render-threads and
           # --sub-gpu-blur are live.
-          sed -i 's|libass/libass\.git|the-database/libass.git|g' packages/libass.cmake
-          sed -i 's|\(GIT_REPOSITORY https://github.com/the-database/libass.git\)|\1\n    GIT_TAG ${{ needs.params.outputs.libass_sha }}|' packages/libass.cmake
+          sed -i "s|libass/libass\.git|$AJN_LIBASS_REPOSITORY.git|g" packages/libass.cmake
+          sed -i "s|\(GIT_REPOSITORY https://github.com/$AJN_LIBASS_REPOSITORY.git\)|\1\n    GIT_TAG $AJN_LIBASS_SHA|" packages/libass.cmake
           sed -i 's|-Dlibunibreak=enabled|-Dlibunibreak=enabled\n        -Dthreads=enabled|' packages/libass.cmake
           # Same cached-checkout problem as mpv above: drop the libass source +
           # ExternalProject subtree so the pinned GIT_TAG is always freshly cloned.
@@ -435,7 +474,16 @@ jobs:
           find build${{ matrix.bit }} -maxdepth 3 -type d -name 'libass-prefix' -exec rm -rf {} + 2>/dev/null || true
           git add packages/libass.cmake && \
             git -c user.name=ci -c user.email=ci@local commit -m "redirect libass source"
-          bash ../build.sh -t '${{ matrix.bit }}' -c '${{ inputs.compiler }}' -s "${{ matrix.lgpl == true && 'true' || 'false' }}"
+          build_script=../build.sh
+          if [ '${{ inputs.addon_metadata }}' = 'true' ]; then build_script=../build-addons.sh; fi
+          bash "$build_script" -t '${{ matrix.bit }}' -c '${{ inputs.compiler }}' -s "${{ matrix.lgpl == true && 'true' || 'false' }}"
+      - name: Upload addon native capability evidence
+        if: ${{ inputs.addon_metadata }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: mpv-winbuild-cmake/release/mpv-addon-native-x86_64.json
+          archive: false
+          if-no-files-found: error
       - name: Collect logs
         if: ${{ always() }}
         run: |
@@ -739,7 +787,7 @@ jobs:
             const { basename } = require('path');
             const { createHash } = require('crypto');
             const { readFileSync,writeFileSync } = require('fs');
-            const globber = await glob.create([`artifacts/mpv*.7z`,`artifacts/ffmpeg*.7z`].join('\n'));
+            const globber = await glob.create([`artifacts/mpv*.7z`,`artifacts/ffmpeg*.7z`,`artifacts/mpv-addon-native-*.json`].join('\n'));
             const files = await globber.glob();
             if ( files.length > 0 ) {
               let sha256="";
@@ -754,7 +802,7 @@ jobs:
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "artifacts/mpv*.7z,artifacts/ffmpeg*.7z,sha256.txt"
+          artifacts: "${{ inputs.addon_metadata && 'artifacts/mpv*.7z,artifacts/ffmpeg*.7z,artifacts/mpv-addon-native-*.json,sha256.txt' || 'artifacts/mpv*.7z,artifacts/ffmpeg*.7z,sha256.txt' }}"
           commit: version
           name: "${{ env.long_time }}"
           body: "${{ steps.note.outputs.note }}"

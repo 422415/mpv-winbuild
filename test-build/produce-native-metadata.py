@@ -53,6 +53,10 @@ def produce(source, libass_source, build, binaries, output, linkage):
                 files[p.name] = p
     if not {"mpv.exe", "libmpv-2.dll"}.issubset(files):
         raise ValueError("Both native player and libmpv are required")
+    if len(files) > 256 or len({n.lower() for n in files}) != len(files):
+        raise ValueError("Native dependency set is too large or has duplicate Windows filenames")
+    if any(not re.fullmatch(r"[A-Za-z0-9._+-]{1,128}", n) for n in files):
+        raise ValueError("Unsupported native filename")
     imports = {}
     for name, binary in files.items():
         pe = run("objdump", "-p", str(binary))
@@ -87,8 +91,11 @@ def produce(source, libass_source, build, binaries, output, linkage):
         "buildOptions": {n: options[n] for n in contract["requiredOptions"]},
         "files": {n: digest(p) for n, p in sorted(files.items())}, "imports": imports,
     }
+    encoded = (json.dumps(metadata, indent=2) + "\n").encode("utf-8")
+    if len(encoded) > 1024 * 1024:
+        raise ValueError("Native capability evidence exceeds the consumer's size limit")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    output.write_bytes(encoded)
 
 
 if __name__ == "__main__":

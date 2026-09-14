@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the pinned AJN player and libass with the MSYS2 UCRT64 toolchain.
 set -euo pipefail
-python -B -m unittest discover -s test-build -p test_native_metadata.py
+python -B -m unittest discover -s test-build -p 'test_*.py'
 
 prefix="$(cygpath -m "$PWD/native-prefix")"
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"

@@ -271,7 +271,12 @@ jobs:
         id: lookup_build
         uses: actions/cache/restore@v6.1.0
         with:
-          path: ${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}
+          # Cache versions include the complete path pattern list. Keep lookup,
+          # restore and save identical or a successfully saved cache is invisible.
+          path: |
+            ${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}
+            !${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}/mpv-*
+            !${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}/ajn-addon-configuration
           key: ${{ inputs.compiler }}-build${{ matrix.bit }}-${{ env.cache_suffix }}
           restore-keys: |
             ${{ inputs.compiler }}-build${{ matrix.bit }}-
@@ -345,7 +350,10 @@ jobs:
         if: ${{ inputs.needclean != true && env.build_restore_key != '' }}
         uses: actions/cache/restore@v6.1.0
         with:
-          path: ${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}
+          path: |
+            ${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}
+            !${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}/mpv-*
+            !${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}/ajn-addon-configuration
           key: ${{ env.build_restore_key }}
 
       - name: Set up ccache

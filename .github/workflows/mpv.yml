@@ -450,6 +450,9 @@ jobs:
               git am --3way "$patch" || git am --abort
             done
           fi
+          if [ '${{ inputs.addon_metadata }}' = 'true' ]; then
+            (cd .. && python test-build/prepare-addon-dependencies.py)
+          fi
           if [ "${{ matrix.lgpl }}" = "true" ]; then
             git am --3way ../compile-lgpl-libmpv.patch
           fi

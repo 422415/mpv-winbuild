@@ -58,8 +58,16 @@ def produce(source, libass_source, build, binaries, output, linkage):
     if any(not re.fullmatch(r"[A-Za-z0-9._+-]{1,128}", n) for n in files):
         raise ValueError("Unsupported native filename")
     imports = {}
+    probe_abi = contract.get("privateProbeAbi")
+    if probe_abi is not None and (probe_abi != 1 or not re.search(r"^#define AJN_PROBE_VERSION 1$",
+            (source / "common/ajn_probe.h").read_text(), re.M)):
+        raise ValueError("Unsupported native probe source contract")
     for name, binary in files.items():
         pe = run("objdump", "-p", str(binary))
+        if name == "libmpv-2.dll" and probe_abi is not None:
+            for symbol in ("mpv_ajn_probe_v1", "mpv_ajn_probe_free_v1"):
+                if not re.search(r"\]\s+" + symbol + r"(?:\s|$)", pe):
+                    raise ValueError("Missing native probe export: " + symbol)
         if "pei-x86-64" not in pe:
             raise ValueError(f"Expected Windows x64 PE: {name}")
         imports[name] = sorted(set(n.lower() for n in re.findall(r"DLL Name:\s*(\S+)", pe)))
@@ -91,6 +99,8 @@ def produce(source, libass_source, build, binaries, output, linkage):
         "buildOptions": {n: options[n] for n in contract["requiredOptions"]},
         "files": {n: digest(p) for n, p in sorted(files.items())}, "imports": imports,
     }
+    if probe_abi is not None:
+        metadata["privateProbeAbi"] = probe_abi
     encoded = (json.dumps(metadata, indent=2) + "\n").encode("utf-8")
     if len(encoded) > 1024 * 1024:
         raise ValueError("Native capability evidence exceeds the consumer's size limit")

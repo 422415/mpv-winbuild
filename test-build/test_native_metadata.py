@@ -33,9 +33,10 @@ class NativeMetadataTests(unittest.TestCase):
         for name in self.imports:
             (self.binaries / name).write_bytes(name.encode())
         self.output = self.root / "evidence.json"
+        self.exports = []
         def run(*args):
             if args[0] == "objdump":
-                return "file format pei-x86-64\n" + "\n".join("DLL Name: " + name for name in self.imports[Path(args[-1]).name])
+                return "file format pei-x86-64\n" + "\n".join("DLL Name: " + name for name in self.imports[Path(args[-1]).name]) + "\n" + "\n".join("[ 1] " + name for name in self.exports)
             if "rev-parse" in args:
                 return "a" * 40 if args[2] == str(self.source) else "b" * 40
             if "status" in args:
@@ -95,6 +96,25 @@ class NativeMetadataTests(unittest.TestCase):
     def test_source_pin_mismatch(self):
         os.environ["AJN_MPV_SHA"] = "d" * 40
         with self.assertRaisesRegex(ValueError, "wrong source revision"): self.produce()
+
+    def enable_probe(self):
+        self.contract["privateProbeAbi"] = 1
+        self.save_contract()
+        (self.source / "common").mkdir()
+        (self.source / "common/ajn_probe.h").write_text("#define AJN_PROBE_VERSION 1\n")
+
+    def test_probe_requires_both_actual_exports(self):
+        self.enable_probe()
+        with self.assertRaisesRegex(ValueError, "Missing native probe export"): self.produce()
+        self.exports.append("mpv_ajn_probe_v1")
+        with self.assertRaisesRegex(ValueError, "mpv_ajn_probe_free_v1"): self.produce()
+        self.exports.append("mpv_ajn_probe_free_v1")
+        self.assertEqual(self.produce()["privateProbeAbi"], 1)
+
+    def test_probe_rejects_wrong_source_abi(self):
+        self.enable_probe()
+        (self.source / "common/ajn_probe.h").write_text("#define AJN_PROBE_VERSION 2\n")
+        with self.assertRaisesRegex(ValueError, "probe source contract"): self.produce()
 
 
 if __name__ == "__main__": unittest.main()

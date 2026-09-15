@@ -116,5 +116,17 @@ class NativeMetadataTests(unittest.TestCase):
         (self.source / "common/ajn_probe.h").write_text("#define AJN_PROBE_VERSION 2\n")
         with self.assertRaisesRegex(ValueError, "probe source contract"): self.produce()
 
+    def test_mux_requires_actual_export_and_matching_abi(self):
+        self.contract["privateMuxAbi"] = 1
+        self.save_contract()
+        (self.source / "common").mkdir()
+        header = self.source / "common/ajn_mux.h"
+        header.write_text("#define AJN_MUX_VERSION 1\n")
+        with self.assertRaisesRegex(ValueError, "Missing native mux export"): self.produce()
+        self.exports.append("mpv_ajn_mux_v1")
+        self.assertEqual(self.produce()["privateMuxAbi"], 1)
+        header.write_text("#define AJN_MUX_VERSION 2\n")
+        with self.assertRaisesRegex(ValueError, "mux source contract"): self.produce()
+
 
 if __name__ == "__main__": unittest.main()

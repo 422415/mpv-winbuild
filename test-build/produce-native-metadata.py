@@ -59,15 +59,21 @@ def produce(source, libass_source, build, binaries, output, linkage):
         raise ValueError("Unsupported native filename")
     imports = {}
     probe_abi = contract.get("privateProbeAbi")
+    mux_abi = contract.get("privateMuxAbi")
     if probe_abi is not None and (probe_abi != 1 or not re.search(r"^#define AJN_PROBE_VERSION 1$",
             (source / "common/ajn_probe.h").read_text(), re.M)):
         raise ValueError("Unsupported native probe source contract")
+    if mux_abi is not None and (mux_abi != 1 or not re.search(r"^#define AJN_MUX_VERSION 1$",
+            (source / "common/ajn_mux.h").read_text(), re.M)):
+        raise ValueError("Unsupported native mux source contract")
     for name, binary in files.items():
         pe = run("objdump", "-p", str(binary))
         if name == "libmpv-2.dll" and probe_abi is not None:
             for symbol in ("mpv_ajn_probe_v1", "mpv_ajn_probe_free_v1"):
                 if not re.search(r"\]\s+" + symbol + r"(?:\s|$)", pe):
                     raise ValueError("Missing native probe export: " + symbol)
+        if name == "libmpv-2.dll" and mux_abi is not None and not re.search(r"\]\s+mpv_ajn_mux_v1(?:\s|$)", pe):
+            raise ValueError("Missing native mux export")
         if "pei-x86-64" not in pe:
             raise ValueError(f"Expected Windows x64 PE: {name}")
         imports[name] = sorted(set(n.lower() for n in re.findall(r"DLL Name:\s*(\S+)", pe)))
@@ -101,6 +107,8 @@ def produce(source, libass_source, build, binaries, output, linkage):
     }
     if probe_abi is not None:
         metadata["privateProbeAbi"] = probe_abi
+    if mux_abi is not None:
+        metadata["privateMuxAbi"] = mux_abi
     encoded = (json.dumps(metadata, indent=2) + "\n").encode("utf-8")
     if len(encoded) > 1024 * 1024:
         raise ValueError("Native capability evidence exceeds the consumer's size limit")

@@ -246,6 +246,9 @@ jobs:
         with:
           repository: shinchiro/mpv-winbuild-cmake
           path: mpv-winbuild-cmake
+          # Keep addon builds on the toolchain qualified with the UCRT runtime.
+          # Upstream master can change its sysroot layout independently of caches.
+          ref: ${{ inputs.addon_metadata && 'cd1edc11dc6887a50f705717619d879f5a93a488' || 'master' }}
           fetch-depth: 0
       - name: Prepare
         run: |

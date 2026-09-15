@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import struct
 import subprocess
 
 
@@ -20,6 +21,51 @@ def run(*args):
 def digest(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def pe_exports(path):
+    """Read named exports from the PE table, independent of objdump's text format."""
+    data = path.read_bytes()
+    def uint(offset, fmt="<I"):
+        if offset < 0 or offset + struct.calcsize(fmt) > len(data):
+            raise ValueError("Truncated PE export table")
+        return struct.unpack_from(fmt, data, offset)[0]
+    if data[:2] != b"MZ":
+        raise ValueError("Expected PE executable")
+    pe = uint(0x3c)
+    if data[pe:pe + 4] != b"PE\0\0" or uint(pe + 4, "<H") != 0x8664:
+        raise ValueError("Expected Windows x64 PE")
+    optional = pe + 24
+    if uint(optional, "<H") != 0x20b or uint(pe + 20, "<H") < 120:
+        raise ValueError("Expected PE32+ optional header")
+    sections = optional + uint(pe + 20, "<H")
+    def file_offset(rva):
+        for index in range(uint(pe + 6, "<H")):
+            section = sections + index * 40
+            address, size, raw = uint(section + 12), uint(section + 16), uint(section + 20)
+            if address <= rva < address + size:
+                result = raw + rva - address
+                if result < len(data):
+                    return result
+        raise ValueError("PE export points outside file-backed sections")
+    rva = uint(optional + 112)
+    if not rva:
+        return set()
+    table = file_offset(rva)
+    count = uint(table + 24)
+    if count > 65536:
+        raise ValueError("Too many named PE exports")
+    if not count:
+        return set()
+    names = file_offset(uint(table + 32))
+    result = set()
+    for index in range(count):
+        start = file_offset(uint(names + index * 4))
+        end = data.find(b"\0", start, min(start + 1024, len(data)))
+        if end < 0:
+            raise ValueError("Unterminated PE export name")
+        result.add(data[start:end].decode("ascii"))
+    return result
 
 
 def produce(source, libass_source, build, binaries, output, linkage):
@@ -72,13 +118,14 @@ def produce(source, libass_source, build, binaries, output, linkage):
         raise ValueError("Unsupported native mux source contract")
     for name, binary in files.items():
         pe = run("objdump", "-p", str(binary))
-        if name == "libmpv-2.dll" and subtitles_abi is not None and not re.search(r"\]\s+mpv_ajn_subtitles_v1(?:\s|$)", pe):
+        exports = pe_exports(binary) if name == "libmpv-2.dll" else set()
+        if name == "libmpv-2.dll" and subtitles_abi is not None and "mpv_ajn_subtitles_v1" not in exports:
             raise ValueError("Missing native subtitles export")
         if name == "libmpv-2.dll" and probe_abi is not None:
             for symbol in ("mpv_ajn_probe_v1", "mpv_ajn_probe_free_v1"):
-                if not re.search(r"\]\s+" + symbol + r"(?:\s|$)", pe):
+                if symbol not in exports:
                     raise ValueError("Missing native probe export: " + symbol)
-        if name == "libmpv-2.dll" and mux_abi is not None and not re.search(r"\]\s+mpv_ajn_mux_v1(?:\s|$)", pe):
+        if name == "libmpv-2.dll" and mux_abi is not None and "mpv_ajn_mux_v1" not in exports:
             raise ValueError("Missing native mux export")
         if "pei-x86-64" not in pe:
             raise ValueError(f"Expected Windows x64 PE: {name}")

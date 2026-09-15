@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import struct
 from pathlib import Path
 import tempfile
 import unittest
@@ -44,6 +45,7 @@ class NativeMetadataTests(unittest.TestCase):
             raise AssertionError(args)
         self.addCleanup(patch.stopall)
         patch.object(producer, "run", side_effect=run).start()
+        patch.object(producer, "pe_exports", side_effect=lambda _: set(self.exports)).start()
         patch.dict(os.environ, {"GITHUB_REPOSITORY": "fixture/build", "GITHUB_SHA": "c" * 40,
             "GITHUB_RUN_ID": "fixture", "AJN_MPV_SHA": "a" * 40, "AJN_LIBASS_SHA": "b" * 40}).start()
 
@@ -139,6 +141,41 @@ class NativeMetadataTests(unittest.TestCase):
         self.assertEqual(self.produce()["privateMuxAbi"], 1)
         header.write_text("#define AJN_MUX_VERSION 2\n")
         with self.assertRaisesRegex(ValueError, "mux source contract"): self.produce()
+
+
+class PeExportTests(unittest.TestCase):
+    def fixture(self):
+        # Minimal PE32+ header and file-backed .edata with one named export.
+        data = bytearray(1024)
+        data[:2] = b"MZ"
+        def put(offset, value, fmt="<I"): struct.pack_into(fmt, data, offset, value)
+        put(0x3c, 0x80); data[0x80:0x84] = b"PE\0\0"
+        put(0x84, 0x8664, "<H"); put(0x86, 1, "<H"); put(0x94, 240, "<H")
+        put(0x98, 0x20b, "<H"); put(0x108, 0x1000)
+        put(0x194, 0x1000); put(0x198, 512); put(0x19c, 512)
+        put(0x218, 1); put(0x220, 0x1040); put(0x240, 0x1060)
+        name = b"mpv_ajn_subtitles_v1\0"
+        data[0x260:0x260 + len(name)] = name
+        return data
+
+    def parse(self, data):
+        class Image:
+            def read_bytes(self): return data
+        return producer.pe_exports(Image())
+
+    def test_named_export_without_objdump(self):
+        self.assertEqual(self.parse(self.fixture()), {"mpv_ajn_subtitles_v1"})
+
+    def test_unrelated_symbol_string_is_not_an_export(self):
+        data = self.fixture()
+        struct.pack_into("<I", data, 0x108, 0)
+        self.assertEqual(self.parse(data), set())
+
+    def test_truncated_and_invalid_name_pointer_rejected(self):
+        with self.assertRaises(ValueError): self.parse(self.fixture()[:0x240])
+        data = self.fixture()
+        struct.pack_into("<I", data, 0x240, 0x5000)
+        with self.assertRaisesRegex(ValueError, "outside"): self.parse(data)
 
 
 if __name__ == "__main__": unittest.main()

@@ -34,7 +34,8 @@ cleanup(mpv save-addon-configuration)'''
     # The compiler cache and target runtime cache are independent. A restored
     # clang executable does not establish that MinGW headers/CRT/libc++ exist.
     # This target is incremental when both caches are complete.
-    runtime = '''    if [ "$compiler" = "clang" ]; then
+    runtime = '''    python "$(dirname "$AJN_METADATA_TOOL")/clean-native-packages.py" "$buildroot/build$bit" || exit 1
+    if [ "$compiler" = "clang" ]; then
         ninja -C $buildroot/build$bit llvm-clang || exit 1
     fi
 '''

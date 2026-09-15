@@ -116,6 +116,18 @@ class NativeMetadataTests(unittest.TestCase):
         (self.source / "common/ajn_probe.h").write_text("#define AJN_PROBE_VERSION 2\n")
         with self.assertRaisesRegex(ValueError, "probe source contract"): self.produce()
 
+    def test_subtitles_requires_actual_export_and_matching_abi(self):
+        self.contract["privateSubtitlesAbi"] = 1
+        self.save_contract()
+        (self.source / "common").mkdir()
+        header = self.source / "common/ajn_subtitles.h"
+        header.write_text("#define AJN_SUBTITLES_VERSION 1\n")
+        with self.assertRaisesRegex(ValueError, "Missing native subtitles export"): self.produce()
+        self.exports.append("mpv_ajn_subtitles_v1")
+        self.assertEqual(self.produce()["privateSubtitlesAbi"], 1)
+        header.write_text("#define AJN_SUBTITLES_VERSION 2\n")
+        with self.assertRaisesRegex(ValueError, "subtitles source contract"): self.produce()
+
     def test_mux_requires_actual_export_and_matching_abi(self):
         self.contract["privateMuxAbi"] = 1
         self.save_contract()

@@ -31,7 +31,14 @@ cleanup(mpv save-addon-configuration)'''
         --build "$buildroot/build$bit/ajn-addon-configuration" --binaries "$buildroot/build$bit"/mpv-* \\
         --output "$gitdir/release/mpv-addon-native-x86_64.json" --linkage static || exit 1
 '''
-    source = source.replace(compile_step, compile_step.rstrip("\n") + " || exit 1\n")
+    # The compiler cache and target runtime cache are independent. A restored
+    # clang executable does not establish that MinGW headers/CRT/libc++ exist.
+    # This target is incremental when both caches are complete.
+    runtime = '''    if [ "$compiler" = "clang" ]; then
+        ninja -C $buildroot/build$bit llvm-clang || exit 1
+    fi
+'''
+    source = source.replace(compile_step, runtime + compile_step.rstrip("\n") + " || exit 1\n")
     script.with_name("build-addons.sh").write_text(source.replace(needle, hook + needle))
 
 

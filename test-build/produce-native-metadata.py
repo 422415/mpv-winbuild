@@ -108,6 +108,11 @@ def produce(source, libass_source, build, binaries, output, linkage):
     mux_abi = contract.get("privateMuxAbi")
     subtitles_abi = contract.get("privateSubtitlesAbi")
     scene_abi = contract.get("privateSceneAbi")
+    streaming_abi = contract.get("privateStreamingAbi")
+    if streaming_abi is not None and (streaming_abi != 1 or
+            "#define AJN_STREAM_VERSION 1" not in (source / "video/filter/vf_animejanai.c").read_text() or
+            "failure_is_fatal" not in (source / "filters/f_output_chain.c").read_text()):
+        raise ValueError("Unsupported native streaming source contract")
     if scene_abi is not None and (scene_abi != 1 or not re.search(r"^#define AJN_SCENE_VERSION 1$",
             (source / "video/filter/ajn_scene_shared.h").read_text(), re.M) or
             '"scene-map"' not in (source / "video/filter/vf_animejanai.c").read_text()):
@@ -171,6 +176,8 @@ def produce(source, libass_source, build, binaries, output, linkage):
         metadata["privateSubtitlesAbi"] = subtitles_abi
     if scene_abi is not None:
         metadata["privateSceneAbi"] = scene_abi
+    if streaming_abi is not None:
+        metadata["privateStreamingAbi"] = streaming_abi
     encoded = (json.dumps(metadata, indent=2) + "\n").encode("utf-8")
     if len(encoded) > 1024 * 1024:
         raise ValueError("Native capability evidence exceeds the consumer's size limit")

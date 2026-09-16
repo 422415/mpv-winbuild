@@ -137,6 +137,8 @@ def produce(source, libass_source, build, binaries, output, linkage):
                     raise ValueError("Missing native probe export: " + symbol)
         if name == "libmpv-2.dll" and mux_abi is not None and "mpv_ajn_mux_v1" not in exports:
             raise ValueError("Missing native mux export")
+        if name == "libmpv-2.dll" and streaming_abi is not None and "mpv_ajn_encoder_check_v1" not in exports:
+            raise ValueError("Missing native encoder readiness export")
         if "pei-x86-64" not in pe:
             raise ValueError(f"Expected Windows x64 PE: {name}")
         imports[name] = sorted(set(n.lower() for n in re.findall(r"DLL Name:\s*(\S+)", pe)))

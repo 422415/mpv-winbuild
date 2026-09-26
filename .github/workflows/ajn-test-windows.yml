@@ -61,6 +61,13 @@ jobs:
           path: libass-source
           fetch-depth: 1
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: haasn/libplacebo
+          ref: cee9b076f2c63104ccfd497fa79c39a867293ec4
+          path: libplacebo-source
+          submodules: true
+          persist-credentials: false
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -111,6 +118,7 @@ jobs:
           name: ajn-native-test-logs
           path: |
             build-ass/meson-logs/
+            build-placebo/meson-logs/
             build-mpv/meson-logs/
             native-output/build-info/
           retention-days: 14

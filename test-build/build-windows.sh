@@ -9,6 +9,12 @@ export PATH="$PWD/native-prefix/bin:$PATH"
 
 # Git for Windows checks out CRLF text, while MSYS Git has a separate global
 # config. Match that checkout policy before verifying either source tree.
+git -C libplacebo-source submodule foreach --recursive '
+    git config core.autocrlf true
+    git config core.filemode false
+    git update-index --refresh
+    git diff --exit-code
+'
 for source in mpv-source libass-source libplacebo-source; do
     git -C "$source" config core.autocrlf true
     git -C "$source" config core.filemode false

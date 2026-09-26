@@ -88,11 +88,13 @@ jobs:
             mingw-w64-ucrt-x86_64-lcms2
             mingw-w64-ucrt-x86_64-vulkan-headers
       - name: Retain the tested experimental refresh FFmpeg runtime
-        # 9.0.2 introduced a GGML assertion in the DLL lifetime check. Keep this
-        # experimental branch on the runtime used by the working .3 package.
+        # Keep the working FFmpeg/Whisper/GGML combination together. Updating
+        # GGML alone also reintroduces the DLL-reload assertion with FFmpeg 9.0.1.
         run: >-
           pacman --noconfirm -U
           https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-ffmpeg-9.0.1-3-any.pkg.tar.zst
+          https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-ggml-0.24.0-1-any.pkg.tar.zst
+          https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-whisper.cpp-1~1.9.4.r77.gda5457222-1-any.pkg.tar.zst
       - name: Build and test pinned native components
         run: bash test-build/build-windows.sh
       - name: Upload native test package

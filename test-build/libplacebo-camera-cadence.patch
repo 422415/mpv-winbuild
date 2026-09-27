@@ -1,0 +1,250 @@
+diff --git a/src/include/libplacebo/renderer.h b/src/include/libplacebo/renderer.h
+index 18c0c5e..0ac72b2 100644
+--- a/src/include/libplacebo/renderer.h
++++ b/src/include/libplacebo/renderer.h
+@@ -365,8 +365,16 @@ struct pl_render_params {
+     PL_DEPRECATED_IN(v6.335) float polar_cutoff; // hard-coded as 1e-3
+     PL_DEPRECATED_IN(v7.346) bool skip_target_clearing; // `border = PL_CLEAR_SKIP`
+     PL_DEPRECATED_IN(v7.346) bool blend_against_tiles; // `background = PL_CLEAR_TILES`
++
++    // AJN experiment: translate a single original pose using GPU camera motion.
++    // Offset is relative to the presentation timestamp, in source-frame units.
++    // Target overlays are composited afterwards; source overlays disable it.
++    bool camera_cadence;
++    float camera_cadence_offset;
+ };
+ 
++#define PL_HAVE_AJN_CAMERA_CADENCE 1
++
+ // Bare minimum parameters, with no features enabled. This is the fastest
+ // possible configuration, and should therefore be fine on any system.
+ #define PL_RENDER_DEFAULTS                              \
+@@ -813,6 +821,8 @@ struct pl_frame_mix {
+ // increased by the corresponding ratio.
+ static inline float pl_frame_mix_radius(const struct pl_render_params *params)
+ {
++    if (params->camera_cadence)
++        return 2.0;
+     // For backwards compatibility, allow !frame_mixer->kernel
+     if (!params->frame_mixer || !params->frame_mixer->kernel)
+         return 0.0;
+diff --git a/src/meson.build b/src/meson.build
+index ea5d9b4..d96a807 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -89,6 +89,7 @@ headers = [
+ ]
+ 
+ sources = [
++  'camera_motion.c',
+   'cache.c',
+   'colorspace.c',
+   'common.c',
+diff --git a/src/renderer.c b/src/renderer.c
+index 576528b..dab7a3b 100644
+--- a/src/renderer.c
++++ b/src/renderer.c
+@@ -22,11 +22,13 @@
+ #include "hash.h"
+ #include "shaders.h"
+ #include "dispatch.h"
++#include "camera_motion.h"
+ 
+ #include <libplacebo/renderer.h>
+ 
+ struct cached_frame {
+     uint64_t signature;
++    uint64_t camera_signature;
+     uint64_t params_hash; // for detecting `pl_render_params` changes
+     struct pl_color_space color;
+     struct pl_icc_profile profile;
+@@ -83,6 +85,8 @@ struct pl_renderer_t {
+     // Frame cache (for frame mixing / interpolation)
+     PL_ARRAY(struct cached_frame) frames;
+     PL_ARRAY(pl_tex) frame_fbos;
++    struct ajn_camera *camera;
++    uint64_t camera_clock;
+ 
+     // For debugging / logging purposes
+     int prev_dither;
+@@ -176,6 +180,7 @@ void pl_renderer_destroy(pl_renderer *p_rr)
+     for (int i = 0; i < PL_ARRAY_SIZE(rr->icc_fallback); i++)
+         pl_icc_close(&rr->icc_fallback[i].icc);
+ 
++    ajn_camera_destroy(&rr->camera);
+     pl_dispatch_destroy(&rr->dp);
+     pl_free_ptr(p_rr);
+ }
+@@ -192,6 +197,7 @@ void pl_renderer_load(pl_renderer rr, const uint8_t *cache)
+ 
+ void pl_renderer_flush_cache(pl_renderer rr)
+ {
++    ajn_camera_reset(rr->camera);
+     for (int i = 0; i < rr->frames.num; i++)
+         pl_tex_destroy(rr->gpu, &rr->frames.elem[i].tex);
+     rr->frames.num = 0;
+@@ -3662,6 +3668,8 @@ static struct params_info render_params_info(const struct pl_render_params *para
+     CLEAR(params.dynamic_constants);
+     CLEAR(params.info_callback);
+     CLEAR(params.info_priv);
++    CLEAR(params.camera_cadence);
++    CLEAR(params.camera_cadence_offset);
+ 
+     pl_hash_merge(&info.hash, pl_var_hash(params));
+     return info;
+@@ -3685,7 +3693,16 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
+     for (int i = 0; i < images->num_frames - 1; i++)
+         require(images->timestamps[i] <= images->timestamps[i+1]);
+ 
+-    const struct pl_frame *refimg = pl_frame_mix_nearest(images);
++    bool camera = params->camera_cadence && images->num_frames > 1;
++    for (int i = 0; i < images->num_frames; i++)
++        camera &= images->frames[i]->num_overlays == 0;
++    const struct pl_frame *refimg = camera ? pl_frame_mix_current(images)
++                                         : pl_frame_mix_nearest(images);
++    refimg = PL_DEF(refimg, images->frames[0]);
++    int camera_ref = 0;
++    for (int i = 0; i < images->num_frames; i++)
++        if (images->frames[i] == refimg)
++            camera_ref = i;
+     struct pass_state pass = {
+         .rr = rr,
+         .params = params,
+@@ -3710,6 +3727,7 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
+     int fidx = 0;
+     struct cached_frame frames[MAX_MIX_FRAMES];
+     float weights[MAX_MIX_FRAMES];
++    float timestamps[MAX_MIX_FRAMES];
+     float wsum = 0.0;
+ 
+     // Garbage collect the cache by evicting all frames from the cache that are
+@@ -3733,7 +3751,7 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
+     }
+ 
+     // Traverse the input frames and determine/prepare the ones we need
+-    bool single_frame = !params->frame_mixer || images->num_frames == 1;
++    bool single_frame = !camera && (!params->frame_mixer || images->num_frames == 1);
+ retry:
+     for (int i = 0; i < images->num_frames; i++) {
+         uint64_t sig = images->signatures[i];
+@@ -3749,7 +3767,11 @@ retry:
+         }
+ 
+         float weight;
+-        if (single_frame) {
++        if (camera) {
++            if (abs(i - camera_ref) > 1)
++                continue;
++            weight = img == refimg ? 1.0 : 0.0;
++        } else if (single_frame) {
+ 
+             // Only render the refimg, ignore others
+             if (img == refimg) {
+@@ -3811,7 +3833,7 @@ retry:
+         // also exclude the reference image from this optimization to ensure
+         // that we always have at least one frame.
+         const float cutoff = 1e-3;
+-        if (fabsf(weight) <= cutoff && img != refimg) {
++        if (!camera && fabsf(weight) <= cutoff && img != refimg) {
+             PL_TRACE(rr, "   -> Skipping: weight (%f) below threshold (%f)",
+                      weight, cutoff);
+             continue;
+@@ -3836,7 +3858,7 @@ retry:
+         // Check to see if we can blindly reuse this cache entry. This is the
+         // case if either the params are compatible, or the user doesn't care
+         bool can_reuse = f->tex;
+-        bool strict_reuse = skip_cache || single_frame ||
++        bool strict_reuse = camera || skip_cache || single_frame ||
+                             !params->preserve_mixing_cache;
+         if (can_reuse && strict_reuse) {
+             can_reuse = f->tex->params.w == out_w &&
+@@ -3940,6 +3962,7 @@ retry:
+             f->color = inter_pass.img.color;
+             f->comps = inter_pass.img.comps;
+             f->profile = target->profile;
++            f->camera_signature = ++rr->camera_clock;
+             // fall through
+ 
+ inter_pass_error:
+@@ -3952,6 +3975,7 @@ inter_pass_error:
+         pl_assert(fidx < MAX_MIX_FRAMES);
+         frames[fidx] = *f;
+         weights[fidx] = weight;
++        timestamps[fidx] = images->timestamps[i];
+         wsum += weight;
+         fidx++;
+     }
+@@ -3982,6 +4006,39 @@ inter_pass_error:
+     pl_assert(fidx > 0);
+ 
+     pl_shader sh = pl_dispatch_begin(rr->dp);
++    int comps = 0;
++    if (camera) {
++        int base = 0;
++        for (int i = 0; i < fidx; i++)
++            if (weights[i] == 1.0)
++                base = i;
++        float offset = params->camera_cadence_offset - timestamps[base];
++        int neighbor = base + (offset < 0 ? -1 : 1);
++        if (neighbor >= 0 && neighbor < fidx && fabsf(offset) > 1e-5) {
++            float interval = fabsf(timestamps[neighbor] - timestamps[base]);
++            if (interval > 0 && fabsf(offset) <= interval) {
++                if (!rr->camera)
++                    rr->camera = ajn_camera_create(rr->gpu, rr->dp);
++                if (!rr->camera ||
++                    !ajn_camera_frame(rr->camera, frames[base].camera_signature, frames[base].tex) ||
++                    !ajn_camera_frame(rr->camera, frames[neighbor].camera_signature, frames[neighbor].tex))
++                    goto camera_error;
++                int before = PL_MIN(base, neighbor), after = PL_MAX(base, neighbor);
++                pl_tex motion = ajn_camera_pair(rr->camera, frames[before].camera_signature,
++                                               frames[after].camera_signature);
++                if (!motion || !ajn_camera_sample(rr->camera, sh, frames[base].tex,
++                                                  frames[neighbor].tex, motion, offset / interval))
++                    goto camera_error;
++                struct pl_color_space frame_csp = frames[base].color;
++                struct pl_color_space mix_csp = target->color;
++                frame_csp.hdr = mix_csp.hdr = (struct pl_hdr_metadata) {0};
++                pl_shader_color_map_ex(sh, NULL, pl_color_map_args(frame_csp, mix_csp));
++                comps = frames[base].comps;
++                goto output;
++            }
++        }
++        // Start/end of stream or zero displacement: retain the original pose.
++    }
+     sh_describef(sh, "frame mixing (%d frame%s)", fidx, fidx > 1 ? "s" : "");
+     sh->output = PL_SHADER_SIG_COLOR;
+     sh->output_w = out_w;
+@@ -3992,8 +4049,9 @@ inter_pass_error:
+          "{                             \n"
+          "vec4 mix_color = vec4(0.0);   \n");
+ 
+-    int comps = 0;
+     for (int i = 0; i < fidx; i++) {
++        if (weights[i] == 0)
++            continue;
+         const struct pl_tex_params *tpars = &frames[i].tex->params;
+ 
+         // Use linear sampling if desired and possible
+@@ -4030,7 +4088,8 @@ inter_pass_error:
+     GLSL("color = mix_color; \n"
+          "}                  \n");
+ 
+-    // Dispatch this to the destination
++output:
++    // Dispatch this to the destination, then composite target subtitles/OSD.
+     pass.img = (struct img) {
+         .sh = sh,
+         .w = out_w,
+@@ -4051,6 +4110,12 @@ inter_pass_error:
+     pass_uninit(&pass);
+     return true;
+ 
++camera_error:
++    pl_dispatch_abort(rr->dp, &sh);
++    PL_ERR(rr, "GPU camera cadence processing failed");
++    pass_uninit(&pass);
++    return false;
++
+ fail:
+     PL_ERR(rr, "Could not render image for frame mixing.. disabling!");
+     rr->errors |= PL_RENDER_ERR_FRAME_MIXING;

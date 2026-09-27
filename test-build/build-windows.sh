@@ -24,6 +24,9 @@ done
 
 # Keep render queues parallel while presenting the swapchain in one order.
 git -C libplacebo-source apply ../test-build/libplacebo-present-queue.patch
+git -C libplacebo-source apply ../test-build/libplacebo-camera-cadence.patch
+python -B test-build/cadence/embed.py
+cp test-build/cadence/camera_motion{.c,.h,_shaders.h} libplacebo-source/src/
 meson setup build-placebo libplacebo-source --prefix="$prefix" --buildtype=release \
     --default-library=shared --wrap-mode=nodownload -Ddebug=true \
     -Dvulkan=enabled -Dopengl=enabled -Dd3d11=enabled -Dshaderc=enabled \
@@ -65,3 +68,4 @@ git -C mpv-source rev-parse HEAD > native-output/build-info/mpv-commit.txt
 git -C libass-source rev-parse HEAD > native-output/build-info/libass-commit.txt
 git -C libplacebo-source rev-parse HEAD > native-output/build-info/libplacebo-commit.txt
 cp test-build/libplacebo-present-queue.patch native-output/build-info/
+cp test-build/libplacebo-camera-cadence.patch native-output/build-info/

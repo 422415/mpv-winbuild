@@ -20,9 +20,15 @@ blend-subtitles=no
 camera-cadence=yes
 ```
 
-Use a fixed 60 Hz display and 23.976 fps source for comparison with the offline
-`emulate-60` prototype. This option does not change the display refresh rate.
-It bypasses near-integer display/source ratios, pauses, and source-blended
+The schedule uses the player's current display interval and source duration,
+with no fixed Hz preset. The original comparison with the offline `emulate-60`
+prototype used a 60 Hz display and 23.976 fps source. The cadence clock advances
+from successive presentation timestamps so a later refresh estimate does not
+reinterpret the whole elapsed episode. Substantial rate changes and playback
+resets re-anchor it; OSD redraws do not advance it.
+
+This option does not change the display refresh rate. It bypasses near-integer
+display/source ratios, content faster than the display, pauses, and source-blended
 subtitles. Ordinary target subtitles and OSD are composited after the correction.
 Turn it off with `camera-cadence=no`. It is disabled by default and is only
 available when mpv is built with this patched libplacebo.

@@ -1,33 +1,20 @@
 diff --git a/src/include/libplacebo/renderer.h b/src/include/libplacebo/renderer.h
-index 18c0c5e..0ac72b2 100644
+index 18c0c5e..a100c96 100644
 --- a/src/include/libplacebo/renderer.h
 +++ b/src/include/libplacebo/renderer.h
-@@ -365,8 +365,16 @@ struct pl_render_params {
-     PL_DEPRECATED_IN(v6.335) float polar_cutoff; // hard-coded as 1e-3
-     PL_DEPRECATED_IN(v7.346) bool skip_target_clearing; // `border = PL_CLEAR_SKIP`
-     PL_DEPRECATED_IN(v7.346) bool blend_against_tiles; // `background = PL_CLEAR_TILES`
-+
-+    // AJN experiment: translate a single original pose using GPU camera motion.
-+    // Offset is relative to the presentation timestamp, in source-frame units.
-+    // Target overlays are composited afterwards; source overlays disable it.
-+    bool camera_cadence;
-+    float camera_cadence_offset;
- };
+@@ -70,6 +70,12 @@ struct pl_render_errors {
+ PL_API pl_renderer pl_renderer_create(pl_log log, pl_gpu gpu);
+ PL_API void pl_renderer_destroy(pl_renderer *rr);
  
++// AJN experiment, preserving the public render-parameter ABI. Call before
++// pl_render_image_mix; offset uses source-frame units relative to presentation.
++// The caller requests a queue radius of 2 while this is enabled.
 +#define PL_HAVE_AJN_CAMERA_CADENCE 1
++PL_API void pl_renderer_set_camera_cadence(pl_renderer rr, bool enabled, float offset);
 +
- // Bare minimum parameters, with no features enabled. This is the fastest
- // possible configuration, and should therefore be fine on any system.
- #define PL_RENDER_DEFAULTS                              \
-@@ -813,6 +821,8 @@ struct pl_frame_mix {
- // increased by the corresponding ratio.
- static inline float pl_frame_mix_radius(const struct pl_render_params *params)
- {
-+    if (params->camera_cadence)
-+        return 2.0;
-     // For backwards compatibility, allow !frame_mixer->kernel
-     if (!params->frame_mixer || !params->frame_mixer->kernel)
-         return 0.0;
+ // Returns current renderer state, see pl_render_errors.
+ PL_API struct pl_render_errors pl_renderer_get_errors(pl_renderer rr);
+ 
 diff --git a/src/meson.build b/src/meson.build
 index ea5d9b4..d96a807 100644
 --- a/src/meson.build
@@ -41,7 +28,7 @@ index ea5d9b4..d96a807 100644
    'colorspace.c',
    'common.c',
 diff --git a/src/renderer.c b/src/renderer.c
-index 576528b..dab7a3b 100644
+index 576528b..8ddcba5 100644
 --- a/src/renderer.c
 +++ b/src/renderer.c
 @@ -22,11 +22,13 @@
@@ -58,16 +45,31 @@ index 576528b..dab7a3b 100644
      uint64_t params_hash; // for detecting `pl_render_params` changes
      struct pl_color_space color;
      struct pl_icc_profile profile;
-@@ -83,6 +85,8 @@ struct pl_renderer_t {
+@@ -83,6 +85,10 @@ struct pl_renderer_t {
      // Frame cache (for frame mixing / interpolation)
      PL_ARRAY(struct cached_frame) frames;
      PL_ARRAY(pl_tex) frame_fbos;
 +    struct ajn_camera *camera;
 +    uint64_t camera_clock;
++    bool camera_enabled;
++    float camera_offset;
  
      // For debugging / logging purposes
      int prev_dither;
-@@ -176,6 +180,7 @@ void pl_renderer_destroy(pl_renderer *p_rr)
+@@ -138,6 +144,12 @@ static void sampler_destroy(pl_renderer rr, struct sampler *sampler)
+     pl_shader_obj_destroy(&sampler->downscaler_state);
+ }
+ 
++void pl_renderer_set_camera_cadence(pl_renderer rr, bool enabled, float offset)
++{
++    rr->camera_enabled = enabled;
++    rr->camera_offset = offset;
++}
++
+ void pl_renderer_destroy(pl_renderer *p_rr)
+ {
+     pl_renderer rr = *p_rr;
+@@ -176,6 +188,7 @@ void pl_renderer_destroy(pl_renderer *p_rr)
      for (int i = 0; i < PL_ARRAY_SIZE(rr->icc_fallback); i++)
          pl_icc_close(&rr->icc_fallback[i].icc);
  
@@ -75,7 +77,7 @@ index 576528b..dab7a3b 100644
      pl_dispatch_destroy(&rr->dp);
      pl_free_ptr(p_rr);
  }
-@@ -192,6 +197,7 @@ void pl_renderer_load(pl_renderer rr, const uint8_t *cache)
+@@ -192,6 +205,7 @@ void pl_renderer_load(pl_renderer rr, const uint8_t *cache)
  
  void pl_renderer_flush_cache(pl_renderer rr)
  {
@@ -83,21 +85,12 @@ index 576528b..dab7a3b 100644
      for (int i = 0; i < rr->frames.num; i++)
          pl_tex_destroy(rr->gpu, &rr->frames.elem[i].tex);
      rr->frames.num = 0;
-@@ -3662,6 +3668,8 @@ static struct params_info render_params_info(const struct pl_render_params *para
-     CLEAR(params.dynamic_constants);
-     CLEAR(params.info_callback);
-     CLEAR(params.info_priv);
-+    CLEAR(params.camera_cadence);
-+    CLEAR(params.camera_cadence_offset);
- 
-     pl_hash_merge(&info.hash, pl_var_hash(params));
-     return info;
-@@ -3685,7 +3693,16 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
+@@ -3685,7 +3699,16 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
      for (int i = 0; i < images->num_frames - 1; i++)
          require(images->timestamps[i] <= images->timestamps[i+1]);
  
 -    const struct pl_frame *refimg = pl_frame_mix_nearest(images);
-+    bool camera = params->camera_cadence && images->num_frames > 1;
++    bool camera = rr->camera_enabled && images->num_frames > 1;
 +    for (int i = 0; i < images->num_frames; i++)
 +        camera &= images->frames[i]->num_overlays == 0;
 +    const struct pl_frame *refimg = camera ? pl_frame_mix_current(images)
@@ -110,7 +103,7 @@ index 576528b..dab7a3b 100644
      struct pass_state pass = {
          .rr = rr,
          .params = params,
-@@ -3710,6 +3727,7 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
+@@ -3710,6 +3733,7 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
      int fidx = 0;
      struct cached_frame frames[MAX_MIX_FRAMES];
      float weights[MAX_MIX_FRAMES];
@@ -118,7 +111,7 @@ index 576528b..dab7a3b 100644
      float wsum = 0.0;
  
      // Garbage collect the cache by evicting all frames from the cache that are
-@@ -3733,7 +3751,7 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
+@@ -3733,7 +3757,7 @@ bool pl_render_image_mix(pl_renderer rr, const struct pl_frame_mix *images,
      }
  
      // Traverse the input frames and determine/prepare the ones we need
@@ -127,7 +120,7 @@ index 576528b..dab7a3b 100644
  retry:
      for (int i = 0; i < images->num_frames; i++) {
          uint64_t sig = images->signatures[i];
-@@ -3749,7 +3767,11 @@ retry:
+@@ -3749,7 +3773,11 @@ retry:
          }
  
          float weight;
@@ -140,7 +133,7 @@ index 576528b..dab7a3b 100644
  
              // Only render the refimg, ignore others
              if (img == refimg) {
-@@ -3811,7 +3833,7 @@ retry:
+@@ -3811,7 +3839,7 @@ retry:
          // also exclude the reference image from this optimization to ensure
          // that we always have at least one frame.
          const float cutoff = 1e-3;
@@ -149,7 +142,7 @@ index 576528b..dab7a3b 100644
              PL_TRACE(rr, "   -> Skipping: weight (%f) below threshold (%f)",
                       weight, cutoff);
              continue;
-@@ -3836,7 +3858,7 @@ retry:
+@@ -3836,7 +3864,7 @@ retry:
          // Check to see if we can blindly reuse this cache entry. This is the
          // case if either the params are compatible, or the user doesn't care
          bool can_reuse = f->tex;
@@ -158,7 +151,7 @@ index 576528b..dab7a3b 100644
                              !params->preserve_mixing_cache;
          if (can_reuse && strict_reuse) {
              can_reuse = f->tex->params.w == out_w &&
-@@ -3940,6 +3962,7 @@ retry:
+@@ -3940,6 +3968,7 @@ retry:
              f->color = inter_pass.img.color;
              f->comps = inter_pass.img.comps;
              f->profile = target->profile;
@@ -166,7 +159,7 @@ index 576528b..dab7a3b 100644
              // fall through
  
  inter_pass_error:
-@@ -3952,6 +3975,7 @@ inter_pass_error:
+@@ -3952,6 +3981,7 @@ inter_pass_error:
          pl_assert(fidx < MAX_MIX_FRAMES);
          frames[fidx] = *f;
          weights[fidx] = weight;
@@ -174,7 +167,7 @@ index 576528b..dab7a3b 100644
          wsum += weight;
          fidx++;
      }
-@@ -3982,6 +4006,39 @@ inter_pass_error:
+@@ -3982,6 +4012,39 @@ inter_pass_error:
      pl_assert(fidx > 0);
  
      pl_shader sh = pl_dispatch_begin(rr->dp);
@@ -184,7 +177,7 @@ index 576528b..dab7a3b 100644
 +        for (int i = 0; i < fidx; i++)
 +            if (weights[i] == 1.0)
 +                base = i;
-+        float offset = params->camera_cadence_offset - timestamps[base];
++        float offset = rr->camera_offset - timestamps[base];
 +        int neighbor = base + (offset < 0 ? -1 : 1);
 +        if (neighbor >= 0 && neighbor < fidx && fabsf(offset) > 1e-5) {
 +            float interval = fabsf(timestamps[neighbor] - timestamps[base]);
@@ -214,7 +207,7 @@ index 576528b..dab7a3b 100644
      sh_describef(sh, "frame mixing (%d frame%s)", fidx, fidx > 1 ? "s" : "");
      sh->output = PL_SHADER_SIG_COLOR;
      sh->output_w = out_w;
-@@ -3992,8 +4049,9 @@ inter_pass_error:
+@@ -3992,8 +4055,9 @@ inter_pass_error:
           "{                             \n"
           "vec4 mix_color = vec4(0.0);   \n");
  
@@ -225,7 +218,7 @@ index 576528b..dab7a3b 100644
          const struct pl_tex_params *tpars = &frames[i].tex->params;
  
          // Use linear sampling if desired and possible
-@@ -4030,7 +4088,8 @@ inter_pass_error:
+@@ -4030,7 +4094,8 @@ inter_pass_error:
      GLSL("color = mix_color; \n"
           "}                  \n");
  
@@ -235,7 +228,7 @@ index 576528b..dab7a3b 100644
      pass.img = (struct img) {
          .sh = sh,
          .w = out_w,
-@@ -4051,6 +4110,12 @@ inter_pass_error:
+@@ -4051,6 +4116,12 @@ inter_pass_error:
      pass_uninit(&pass);
      return true;
  

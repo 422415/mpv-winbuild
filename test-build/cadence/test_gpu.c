@@ -74,6 +74,28 @@ static void verify(pl_gpu gpu,pl_dispatch dp,pl_tex motion,bool expect_motion) {
     pl_tex_destroy(gpu,&assertion);
 }
 
+static void verify_sample(pl_gpu gpu,pl_dispatch dp,pl_tex tex) {
+    pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
+    pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true));
+    CHECK(assertion);
+    struct pl_shader_desc d[]={read_tex("picture",tex),write_tex(assertion)};
+    pl_shader sh=pl_dispatch_begin(dp);
+    struct pl_custom_shader cs={.description="GPU presentation assertion",.compute=true,.compute_group_size={1,1},
+        .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=2,
+        .body="ivec2 s=textureSize(picture,0); float error=0.0;"
+              "for(int i=0;i<16;i++) { ivec2 p=s/4+ivec2(i%4,i/4)*32;"
+              "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-vec2(1.8,0.25)*0.37;"
+              "float expected=0.45+0.18*cos(q.x*0.15)*cos(q.y*0.37)+0.12*sin(q.x*0.07+q.y*0.08)+0.1*sin(q.x*0.43)*cos(q.y*0.24);"
+              "error=max(error,abs(texelFetch(picture,p,0).r-expected)); }"
+              "imageStore(dst,ivec2(0),vec4(error<0.003 ? 1.0:0.0,error,0,0));"};
+    CHECK(pl_shader_custom(sh,&cs));
+    CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
+    float result[4]; CHECK(pl_tex_download(gpu,pl_tex_transfer_params(.tex=assertion,.ptr=result)));
+    printf("GPU assertion presentation: %s, maximum luma error %.6f\n",result[0]>0.5?"PASS":"FAIL",result[1]);
+    CHECK(result[0]>0.5);
+    pl_tex_destroy(gpu,&assertion);
+}
+
 int main(int argc,char **argv) {
     int w=argc>1?atoi(argv[1]):1920,h=argc>2?atoi(argv[2]):1080;
     pl_log log=pl_log_create(PL_API_VER,pl_log_params(.log_cb=logger,.log_level=PL_LOG_WARN));
@@ -85,12 +107,18 @@ int main(int argc,char **argv) {
     pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,16,0,PL_FMT_CAP_STORABLE|PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_LINEAR); CHECK(fmt);
     pl_tex a=pl_tex_create(gpu,pl_tex_params(.w=w,.h=h,.format=fmt,.sampleable=true,.storable=true));
     pl_tex b=pl_tex_create(gpu,pl_tex_params(.w=w,.h=h,.format=fmt,.sampleable=true,.storable=true));
-    pl_tex out=pl_tex_create(gpu,pl_tex_params(.w=w,.h=h,.format=fmt,.renderable=true));
+    pl_tex out=pl_tex_create(gpu,pl_tex_params(.w=w,.h=h,.format=fmt,.renderable=true,.sampleable=true));
     CHECK(a && b && out);
     generate(dp,a,0,0,0); generate(dp,b,1.8,0.25,0);
     CHECK(ajn_camera_frame(camera,1,a)); CHECK(ajn_camera_frame(camera,2,b));
     pl_tex motion=ajn_camera_pair(camera,1,2); CHECK(motion);
     verify(gpu,dp,motion,true);
+    for(int reverse=0;reverse<2;reverse++) {
+        pl_shader sh=pl_dispatch_begin(dp);
+        CHECK(ajn_camera_sample(camera,sh,reverse?b:a,reverse?a:b,motion,reverse?-0.63f:0.37f));
+        CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
+        verify_sample(gpu,dp,out);
+    }
     for(int k=0;k<76;k++) {
         if(k==12) { pl_gpu_finish(gpu); timing_count=0; memset(timings,0,sizeof(timings)); }
         // One analysis pair per source frame, five display samples per two pairs.

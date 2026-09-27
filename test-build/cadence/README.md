@@ -37,8 +37,8 @@ artifacts still require visual evaluation. The inverse-rate schedule follows the
 offline prototype, inspired by Templin et al., *Emulating Displays with
 Continuously Varying Frame Rates* (SIGGRAPH 2016).
 
-The renderer retains up to three full-resolution processed frame textures, plus
-small luma pyramids. Extra video memory and concurrent inference load matter even
+The renderer uses three working full-resolution processed frames, plus reusable
+texture caches and small luma pyramids. Extra memory and concurrent inference load matter even
 when isolated shader timings are low. HDR visual equivalence is not established.
 
 Edit the `.glsl` sources and run `python embed.py` to regenerate

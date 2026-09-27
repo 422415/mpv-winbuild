@@ -156,8 +156,9 @@ pl_tex ajn_camera_pair(struct ajn_camera *c,uint64_t before,uint64_t after)
             return NULL;
     }
     struct pl_shader_desc reduce[]={sampled("forward_flow",c->forward),sampled("backward_flow",c->backward),
-                                    sampled("points",c->points),output(b->motion)};
-    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,4,NULL,0,128,1,1,1,128*16+16))
+                                    sampled("points",c->points),output(b->motion),
+                                    sampled("luma_before",a->pyramid[0]),sampled("luma_after",b->pyramid[0])};
+    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,6,NULL,0,128,1,1,1,128*16+40))
         return NULL;
     b->before=before;
     b->paired=true;

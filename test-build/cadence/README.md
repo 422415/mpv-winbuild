@@ -29,6 +29,10 @@ available when mpv is built with this patched libplacebo.
 
 The GPU detector uses three luma pyramid levels, tiled corner selection,
 forward/backward Lucas–Kanade tracking and a global translation consensus.
+Before translating the image, it checks whether that translation also aligns
+the image content across the frame. Independently animated foreground objects
+and parallax can otherwise be outvoted by background tracks; those pairs keep
+the original pose instead. This check runs on the existing GPU luma textures.
 Uncertain motion and cuts retain the selected original pose. Confident pans use
 Lanczos4 translation, with a neighboring original frame supplying exposed edges.
 This is a perceptual experiment, not bit-exact/lossless output or a general motion

@@ -37,7 +37,12 @@ static void generate(pl_dispatch dp,pl_tex tex,float dx,float dy,int cut) {
         "if(all(lessThan(p,s))) {"
         "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-offset;"
         "float c=0.45+0.18*cos(q.x*0.15)*cos(q.y*0.37)+0.12*sin(q.x*0.07+q.y*0.08)+0.1*sin(q.x*0.43)*cos(q.y*0.24);"
-        "if(cut!=0) c=0.5+0.25*cos(q.y*0.11)*sin(q.x*0.31+q.y*0.52);"
+        "if(cut==1) c=0.5+0.25*cos(q.y*0.11)*sin(q.x*0.31+q.y*0.52);"
+        // A held foreground drawing over a moving background. Most tracked
+        // features still agree with the background, but warping both is wrong.
+        "vec2 stationary=(vec2(p)+0.5)/vec2(s)*vec2(640,360);"
+        "if(cut==2 && all(greaterThan(stationary,vec2(230,135))) && all(lessThan(stationary,vec2(330,215))))"
+        " c=0.3+0.25*cos(stationary.x*0.5)*sin(stationary.y*0.4);"
         "imageStore(dst,p,vec4(c,c,c,1)); }";
     pl_shader sh=pl_dispatch_begin(dp);
     float offset[2]={dx,dy};
@@ -50,7 +55,7 @@ static void generate(pl_dispatch dp,pl_tex tex,float dx,float dy,int cut) {
     CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={(tex->params.w+15)/16,(tex->params.h+15)/16,1})));
 }
 
-static void verify(pl_gpu gpu,pl_dispatch dp,pl_tex motion,bool expect_motion) {
+static void verify(pl_gpu gpu,pl_dispatch dp,pl_tex motion,bool expect_motion,const char *label) {
     pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
     CHECK(fmt);
     pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true));
@@ -68,7 +73,7 @@ static void verify(pl_gpu gpu,pl_dispatch dp,pl_tex motion,bool expect_motion) {
     CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
     float result[4];
     CHECK(pl_tex_download(gpu,pl_tex_transfer_params(.tex=assertion,.ptr=result)));
-    printf("GPU assertion %s: %s, tracking error %.6f analysis pixels\n",expect_motion?"translation":"cut",result[0]>0.5?"PASS":"FAIL",result[1]);
+    printf("GPU assertion %s: %s, tracking error %.6f analysis pixels\n",label,result[0]>0.5?"PASS":"FAIL",result[1]);
     fflush(stdout);
     CHECK(result[0]>0.5);
     pl_tex_destroy(gpu,&assertion);
@@ -112,7 +117,7 @@ int main(int argc,char **argv) {
     generate(dp,a,0,0,0); generate(dp,b,1.8,0.25,0);
     CHECK(ajn_camera_frame(camera,1,a)); CHECK(ajn_camera_frame(camera,2,b));
     pl_tex motion=ajn_camera_pair(camera,1,2); CHECK(motion);
-    verify(gpu,dp,motion,true);
+    verify(gpu,dp,motion,true,"translation");
     for(int reverse=0;reverse<2;reverse++) {
         pl_shader sh=pl_dispatch_begin(dp);
         CHECK(ajn_camera_sample(camera,sh,reverse?b:a,reverse?a:b,motion,reverse?-0.63f:0.37f));
@@ -138,7 +143,11 @@ int main(int argc,char **argv) {
         printf("%s: mean=%.6f ms peak=%.6f ms observations=%d\n",timings[i].name,timings[i].sum/timings[i].count,timings[i].peak,timings[i].count);
     generate(dp,b,0,0,1); ajn_camera_reset(camera);
     CHECK(ajn_camera_frame(camera,3,a)); CHECK(ajn_camera_frame(camera,4,b));
-    motion=ajn_camera_pair(camera,3,4); CHECK(motion); verify(gpu,dp,motion,false);
+    motion=ajn_camera_pair(camera,3,4); CHECK(motion); verify(gpu,dp,motion,false,"cut");
+    generate(dp,a,0,0,2); generate(dp,b,1.8,0.25,2); ajn_camera_reset(camera);
+    CHECK(ajn_camera_frame(camera,5,a)); CHECK(ajn_camera_frame(camera,6,b));
+    motion=ajn_camera_pair(camera,5,6); CHECK(motion);
+    verify(gpu,dp,motion,false,"independent foreground over a pan");
     ajn_camera_destroy(&camera);
     pl_tex_destroy(gpu,&a); pl_tex_destroy(gpu,&b); pl_tex_destroy(gpu,&out);
     pl_dispatch_destroy(&dp); pl_vulkan_destroy(&vk); pl_log_destroy(&log);

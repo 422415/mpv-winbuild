@@ -51,6 +51,11 @@ static void generate(pl_dispatch dp,pl_tex tex,float dx,float dy,int cut) {
         // flat anime shading. It must not outvote clear translating detail.
         "if(cut==4 && stationary.x>400.0)"
         " c=0.45+0.015*sin(stationary.x*0.73)*cos(stationary.y*0.59);"
+        // A large drawing changes once while the background keeps panning.
+        // Each pose is held over adjacent frames, as in animation on threes.
+        "if(cut==5 && all(greaterThan(q,vec2(175,75))) && all(lessThan(q,vec2(455,285)))) {"
+        " float pose=offset.x>=7.0?1.0:0.0;"
+        " c=0.4+0.25*cos(q.x*0.41+pose*2.0)*sin(q.y*0.33+pose); }"
         "imageStore(dst,p,vec4(c,c,c,1)); }";
     pl_shader sh=pl_dispatch_begin(dp);
     float offset[2]={dx,dy};
@@ -178,6 +183,29 @@ static void verify_unchanged(pl_gpu gpu,pl_dispatch dp,pl_tex base,pl_tex pictur
     CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
 }
 
+static void verify_redraw_sample(pl_gpu gpu,pl_dispatch dp,pl_tex picture) {
+    pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
+    pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true)); CHECK(assertion);
+    struct pl_shader_desc d[]={read_tex("picture",picture),write_tex(assertion)};
+    pl_shader sh=pl_dispatch_begin(dp);
+    struct pl_custom_shader cs={.description="GPU redraw continuity assertion",.compute=true,.compute_group_size={1,1},
+        .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=2,
+        .body="ivec2 s=textureSize(picture,0); float error=0.0;"
+              "for(int y=0;y<8;y++) for(int x=0;x<8;x++) {"
+              "ivec2 p=ivec2(vec2(45+x*72,40+y*40)/vec2(640,360)*vec2(s));"
+              "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-vec2(1.8,0.25)*3.5;"
+              "float c=0.45+0.18*cos(q.x*0.15)*cos(q.y*0.37)+0.12*sin(q.x*0.07+q.y*0.08)+0.1*sin(q.x*0.43)*cos(q.y*0.24);"
+              "if(all(greaterThan(q,vec2(175,75))) && all(lessThan(q,vec2(455,285))))"
+              " c=0.4+0.25*cos(q.x*0.41)*sin(q.y*0.33);"
+              "error=max(error,abs(texelFetch(picture,p,0).r-c)); }"
+              "imageStore(dst,ivec2(0),vec4(error<0.004?1.0:0.0,error,0,0));"};
+    CHECK(pl_shader_custom(sh,&cs));
+    CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
+    float result[4]; CHECK(pl_tex_download(gpu,pl_tex_transfer_params(.tex=assertion,.ptr=result)));
+    printf("GPU assertion pan across large redraw retains original pose: %s, error %.6f\n",result[0]>.5?"PASS":"FAIL",result[1]);
+    CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
+}
+
 // Prime a connected, coherent source history ending with a at offset zero
 // and b at (1.8, .25), so presentation assertions keep their analytic target.
 static pl_tex coherent_pair(struct ajn_camera *camera,pl_dispatch dp,pl_tex a,pl_tex b) {
@@ -278,6 +306,36 @@ int main(int argc,char **argv) {
         if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
     }
     verify(gpu,dp,motion,false,"rigid pan rejects independently moving foreground");
+    // The changed drawing pair is rejected by the strict classifier. The
+    // presentation lookahead must nevertheless preserve the verified pan,
+    // sampling the original pose rather than blending into the next one.
+    ajn_camera_reset(camera);
+    pl_tex redraw_pairs[6];
+    for(int i=0;i<7;i++) {
+        generate(dp,a,i*1.8f,i*0.25f,5);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) { redraw_pairs[i-1]=ajn_camera_pair(camera,i,i+1); CHECK(redraw_pairs[i-1]); }
+    }
+    verify(gpu,dp,redraw_pairs[3],false,"large redraw remains strictly rejected");
+    generate(dp,a,3*1.8f,3*0.25f,5);
+    generate(dp,b,4*1.8f,4*0.25f,5);
+    pl_shader redraw=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,redraw,a,b,redraw_pairs[3],0.5f));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&redraw,.target=out)));
+    verify_redraw_sample(gpu,dp,out);
+    // A stationary foreground arriving during an established pan is not a
+    // redraw: subsequent pairs disagree too, so lookahead must keep it still.
+    ajn_camera_reset(camera);
+    for(int i=0;i<7;i++) {
+        generate(dp,a,i*1.8f,i*0.25f,i<3?0:2);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) { redraw_pairs[i-1]=ajn_camera_pair(camera,i,i+1); CHECK(redraw_pairs[i-1]); }
+    }
+    generate(dp,a,3*1.8f,3*0.25f,2); generate(dp,b,4*1.8f,4*0.25f,2);
+    pl_shader foreground=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,foreground,a,b,redraw_pairs[3],0.5f));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&foreground,.target=out)));
+    verify_unchanged(gpu,dp,a,out);
     ajn_camera_reset(camera);
     for(int i=0;i<6;i++) {
         pl_tex tex=i%2?b:a;

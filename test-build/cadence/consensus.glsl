@@ -47,7 +47,14 @@ void run_consensus() {
     }
     bool consensus_ok=rigid_pan!=0 ? (inlier_count>=24u && totals[0].z>=0.82*totals[0].w)
                               : float(inlier_count)>=0.82*float(valid_count);
-    bool ok=valid_count>=24u && consensus_ok && bitCount(coverage)>=8;
+    bool geometry_ok=valid_count>=24u && bitCount(coverage)>=8;
+    bool strict_geometry=geometry_ok && consensus_ok;
+    // Retain a separate background candidate across a large drawing change.
+    // It cannot establish confidence here: presentation must confirm both
+    // adjacent pairs before using it. Strict pair acceptance stays unchanged.
+    bool redraw_geometry=rigid_pan!=0 && geometry_ok && inlier_count>=24u &&
+                         inlier_count*2u>valid_count;
+    bool ok=strict_geometry || redraw_geometry;
     if(lane==0u) {
         candidate=ok ? totals[0].xy/float(inlier_count):vec2(0);
         rejected_tiles=0u;
@@ -124,7 +131,7 @@ void run_consensus() {
         // foreground. Keep rejecting that case for the whole-frame mode.
         if(protect && errors.y<0.5*errors.x) atomicAdd(stationary_tiles,1u);
     }
-    totals[lane]=protect ? vec4(0):vec4(errors,0);
+    totals[lane]=vec4(protect ? vec3(0):errors,errors.z);
     barrier();
     for(uint step=64u;step>0u;step/=2u) {
         if(lane<step) totals[lane]+=totals[lane+step];
@@ -151,8 +158,17 @@ void run_consensus() {
         float count=totals[0].z;
         float error=totals[0].x/max(count,1.0);
         float original_error=totals[0].y/max(count,1.0);
-        ok=ok && count>0.0 && error<=0.01 && rejected_tiles<=12u &&
-           (length(candidate)<0.5 || error<=0.5*original_error);
+        bool background_ok=ok && count>0.0 && error<=0.01 &&
+                           (length(candidate)<0.5 || error<=0.5*original_error);
+        // Redrawn pixels leave residual error unrelated to camera motion, so
+        // this candidate needs an improved fit, not the strict twofold gain.
+        // It still needs low absolute error, majority coverage and both
+        // neighboring strict pairs before presentation may use it.
+        bool redraw_ok=redraw_geometry && count>0.0 && error<=0.01 &&
+                       count>=0.5*totals[0].w &&
+                       (length(candidate)<0.5 || error<original_error);
+        imageStore(dst,ivec2(1,0),vec4(candidate/vec2(640,360),redraw_ok?1.0:0.0,0));
+        ok=strict_geometry && background_ok && rejected_tiles<=12u;
         // Limited animation no longer repeatedly disables an otherwise
         // verified camera pan. The existing background fit and coverage
         // requirements still reject large motion disagreements and cuts.

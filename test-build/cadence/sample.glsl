@@ -25,7 +25,7 @@ vec4 sample_camera() {
     vec2 pixel=pos*vec2(size)-0.5;
     vec4 info=texelFetch(weights,ivec2(0),0);
     if(info.z<0.5) return texelFetch(base,clamp(ivec2(round(pixel)),ivec2(0),size-1),0);
-    vec2 delta=texelFetch(motion,ivec2(0),0).xy;
+    vec2 delta=texelFetch(weights,ivec2(9,0),0).xy;
     vec2 before_pos=pos-(fraction<0.0 ? delta:vec2(0));
     // Protect both the destination and the translated sampling footprint so
     // an animated object cannot leave a shifted copy in the background.

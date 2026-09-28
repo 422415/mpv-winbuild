@@ -43,6 +43,17 @@ following the current drawing), adding two full-resolution textures compared
 with the old three-frame window. It retains three Vulkan queues and does not
 add a GPU readback or an extra image-processing pass.
 
+An isolated character redraw can fail the strict pair classifier even while
+the background continues the camera pan. A separate GPU candidate retains
+that background fit when a majority of tracks agree across at least eight
+image regions, and a majority of sampled pixels have low alignment error.
+Presentation can use it only between two strictly accepted pairs, with bounded
+per-frame motion change and a matching intermediate estimate. It samples the
+selected original drawing at the neighboring camera trajectory. Cuts,
+consecutive rejected pairs and persistent stationary foregrounds cannot use
+this path. Strict pair confidence is unchanged. The existing five-pair window
+provides the lookahead; no additional frames, passes or CPU transfers are added.
+
 Use `video-sync=display-resample`, `interpolation=no`, `blend-subtitles=no`,
 Vulkan/NVDEC, and a supported multiple such as nominal 72 Hz for 23.976 fps.
 An unmatched display rate bypasses this experiment. It does not change display

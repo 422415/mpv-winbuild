@@ -195,7 +195,7 @@ pl_tex ajn_camera_pair(struct ajn_camera *c,uint64_t before,uint64_t after)
 
 bool ajn_camera_sample(struct ajn_camera *c,pl_shader sh,pl_tex base,pl_tex neighbor,pl_tex motion,float fraction)
 {
-    if (!ensure_tex(c,&c->weights,9,1,4)) return false;
+    if (!ensure_tex(c,&c->weights,10,1,4)) return false;
     float size[2]={base->params.w,base->params.h};
     int rigid=c->rigid;
     // Five connected pair estimates are tiny GPU textures. Retain their actual

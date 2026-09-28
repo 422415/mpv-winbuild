@@ -11,6 +11,18 @@ bool isolated_hold(vec4 before,vec4 held,vec4 after) {
     return length(held.xy*vec2(640,360))<0.1 && scale>=0.5 &&
            length(a-b)<=0.25*scale;
 }
+vec4 confirm_redraw(vec4 flow,vec4 candidate,vec4 before,vec4 after) {
+    if(flow.w>0.5 || candidate.z<0.5 || before.w<0.5 || after.w<0.5)
+        return flow;
+    vec2 expected=(before.xy+after.xy)*0.5;
+    // Neighbors are two source intervals apart; bound per-interval change.
+    if(0.5*length((before.xy-after.xy)*vec2(640,360))>=0.6 ||
+       length((candidate.xy-expected)*vec2(640,360))>=0.6)
+        return flow;
+    // Only an isolated redraw between two independently verified pan pairs.
+    // A cut or a continuing stationary foreground cannot bridge this check.
+    return vec4(expected,0,1);
+}
 void run_weights() {
     vec4 flow=texelFetch(motion,ivec2(0),0);
     vec2 correction=vec2(0);
@@ -20,10 +32,18 @@ void run_weights() {
         vec4 b=(available&2)!=0 ? texelFetch(previous_motion,ivec2(0),0):vec4(0);
         vec4 d=(available&4)!=0 ? texelFetch(next_motion,ivec2(0),0):vec4(0);
         vec4 e=(available&8)!=0 ? texelFetch(later_motion,ivec2(0),0):vec4(0);
-        // Confirm the same three-pair run from queued frames before displaying
-        // its start. A cut or isolated good pair still cannot activate it.
+        vec4 previous=b,next=d,original=flow;
+        if((available&3)==3)
+            b=confirm_redraw(b,texelFetch(previous_motion,ivec2(1,0),0),a,original);
+        if((available&6)==6)
+            flow=confirm_redraw(flow,texelFetch(motion,ivec2(1,0),0),previous,next);
+        if((available&12)==12)
+            d=confirm_redraw(d,texelFetch(next_motion,ivec2(1,0),0),original,e);
+        // Require a connected three-pair run, with at most an isolated redraw
+        // confirmed from the original strict pairs on either side.
         confirmed=confirmed || (flow.w>0.5 &&
-                    (d.w>=3.0 || (d.w>0.5 && e.w>=3.0)));
+                    ((a.w>0.5 && b.w>0.5) || (b.w>0.5 && d.w>0.5) ||
+                     (d.w>0.5 && e.w>0.5)));
         vec2 first=vec2(0),last=vec2(0);
         // Redistribute one held camera interval over its two moving neighbors.
         // Both ends of the three-interval span stay fixed. Longer camera stops
@@ -45,6 +65,7 @@ void run_weights() {
     bool shifting=confirmed && moving && length(displacement)>0.02;
     if(!shifting) displacement=vec2(0);
     imageStore(dst,ivec2(0),vec4(displacement,shifting ? 1.0:0.0,0));
+    imageStore(dst,ivec2(9,0),vec4(flow.xy,0,0));
     // pixel - displacement has the same fractional part across the image.
     vec2 part=fract(-displacement);
     vec2 sums=vec2(0);

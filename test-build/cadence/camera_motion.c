@@ -111,6 +111,14 @@ static struct frame_slot *find(struct ajn_camera *c,uint64_t signature)
     return NULL;
 }
 
+static struct frame_slot *following(struct ajn_camera *c,uint64_t signature)
+{
+    for (int i=0;i<SLOTS;i++)
+        if (c->slots[i].valid && c->slots[i].paired && c->slots[i].before==signature)
+            return &c->slots[i];
+    return NULL;
+}
+
 bool ajn_camera_frame(struct ajn_camera *c,uint64_t signature,pl_tex frame)
 {
     struct frame_slot *f=find(c,signature);
@@ -190,12 +198,42 @@ bool ajn_camera_sample(struct ajn_camera *c,pl_shader sh,pl_tex base,pl_tex neig
     if (!ensure_tex(c,&c->weights,9,1,4)) return false;
     float size[2]={base->params.w,base->params.h};
     int rigid=c->rigid;
-    struct pl_shader_desc d[]={sampled("motion",motion),output(c->weights)};
+    // Five connected pair estimates are tiny GPU textures. Retain their actual
+    // translations for border sampling; only presentation positions are eased.
+    struct frame_slot *pair=NULL,*nearby[4]={0};
+    if (rigid) for (int i=0;i<SLOTS;i++)
+        if (c->slots[i].valid && c->slots[i].paired && c->slots[i].motion==motion)
+            pair=&c->slots[i];
+    if (pair) {
+        nearby[1]=find(c,pair->before);
+        if (nearby[1] && nearby[1]->paired) nearby[0]=find(c,nearby[1]->before);
+        nearby[2]=following(c,pair->signature);
+        if (nearby[2]) nearby[3]=following(c,nearby[2]->signature);
+    }
+    int available=0,nd=2;
+    const char *names[]={"earlier_motion","previous_motion","next_motion","later_motion"};
+    const char *aliases[]={"#define earlier_motion motion\n","#define previous_motion motion\n",
+                          "#define next_motion motion\n","#define later_motion motion\n"};
+    struct pl_shader_desc d[6]={sampled("motion",motion),output(c->weights)};
+    char header[sizeof(cm_weights_glsl)+160]="";
+    for (int i=0;i<4;i++) {
+        bool valid=nearby[i] && nearby[i]->paired;
+        if (valid) {
+            available|=1<<i;
+            d[nd++]=sampled(names[i],nearby[i]->motion);
+        } else {
+            // libplacebo forbids duplicate descriptor bindings. Missing inputs
+            // use the existing sampler name; their availability bit stays zero.
+            strcat(header,aliases[i]);
+        }
+    }
+    strcat(header,cm_weights_glsl);
     struct pl_shader_var v[]={
         {.var=pl_var_vec2("image_size"),.data=size,.dynamic=true},
         {.var=pl_var_float("fraction"),.data=&fraction,.dynamic=true},
-        {.var=pl_var_int("rigid_pan"),.data=&rigid}};
-    if (!run(c,"camera motion: sampling weights",cm_weights_glsl,"run_weights();",d,2,v,3,1,1,1,1,0)) return false;
+        {.var=pl_var_int("rigid_pan"),.data=&rigid},
+        {.var=pl_var_int("available"),.data=&available}};
+    if (!run(c,"camera motion: sampling weights",header,"run_weights();",d,nd,v,4,1,1,1,1,0)) return false;
     float coords[4][2]={{0,0},{1,0},{0,1},{1,1}};
     struct pl_shader_va position={.attr={.name="pos",.fmt=pl_find_vertex_fmt(c->gpu,PL_FMT_FLOAT,2)},
                                   .data={coords[0],coords[1],coords[2],coords[3]}};

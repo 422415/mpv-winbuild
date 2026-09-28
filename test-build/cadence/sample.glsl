@@ -54,7 +54,7 @@ vec4 sample_camera() {
     }
     // A neighboring original frame supplies only the newly exposed border.
     // Interior sampling retains the selected original drawing.
-    vec2 other=pixel-delta*vec2(size)*(fraction*(1.0-protection)+(fraction<0.0 ? 1.0:-1.0));
+    vec2 other=coord-delta*vec2(size)*(fraction<0.0 ? 1.0:-1.0);
     if(all(greaterThanEqual(other,vec2(0))) && all(lessThan(other,vec2(size))))
         return textureLod(neighbor,(other+0.5)/vec2(size),0.0);
     return texelFetch(base,clamp(ivec2(round(pixel)),ivec2(0),size-1),0);

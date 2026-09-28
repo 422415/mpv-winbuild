@@ -9,13 +9,14 @@ changes retain their timestamps. This mode takes precedence over the older
 `camera-cadence` experiment; the older mode remains available unchanged.
 
 The initial scope is a coherent camera translation. It requires the established
-GPU tracking consensus, a verified background fit, and three source pairs of
-warm-up. Small animated regions may retain their original drawings while sharing
+GPU tracking consensus, a verified background fit, and three connected source
+pairs. Queued frames confirm the start before presentation, avoiding the former
+two-pair visible warm-up. Small animated regions retain their original drawings while sharing
 the camera translation; their presence does not repeatedly disable a good pan.
 A changed region that fits substantially better without camera translation
 rejects the whole pair, protecting stationary foregrounds. Large inconsistent
 regions and cuts also reject it. Motions below 0.1 of an analysis pixel per
-source frame leave the original pixels untouched, avoiding tiny tracking-noise
+source frame in held shots leave the original pixels untouched, avoiding tracking-noise
 wobbles in held shots. Presentation applies a uniform translation, without a regional
 mask, bending transition, or blending between animation drawings. The adjacent
 frame can supply newly revealed borders. This cannot guarantee perfect scene
@@ -31,6 +32,16 @@ dense image checks. The older cadence mode retains its unweighted voting.
 With `camera-pan-half-rate=yes`, camera positions are held for two refreshes
 (36 fps on a 72 Hz display). Source drawings still change on their own timeline,
 including when a new drawing needs translating back to a held camera position.
+
+A single held camera interval surrounded by similar verified translations is
+redistributed across those three intervals, retaining both outer camera positions.
+The drawings and their timestamps are unchanged. This intentionally adjusts the
+camera trajectory near isolated one-frame pauses; longer stops, cuts and direction
+changes are preserved. The sampling shader reads five cached pair estimates.
+Rigid-pan mode prepares up to five processed frames (one preceding and three
+following the current drawing), adding two full-resolution textures compared
+with the old three-frame window. It retains three Vulkan queues and does not
+add a GPU readback or an extra image-processing pass.
 
 Use `video-sync=display-resample`, `interpolation=no`, `blend-subtitles=no`,
 Vulkan/NVDEC, and a supported multiple such as nominal 72 Hz for 23.976 fps.

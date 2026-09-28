@@ -8,7 +8,7 @@ index 18c0c5e..3eaff59 100644
  
 +// AJN experiment, preserving the public render-parameter ABI. Call before
 +// pl_render_image_mix; offset uses source-frame units relative to presentation.
-+// The caller requests a queue radius of 2 while this is enabled.
++// The caller requests radius 2 for cadence or 3 for rigid-pan lookahead.
 +#define PL_HAVE_AJN_CAMERA_CADENCE 1
 +PL_API void pl_renderer_set_camera_cadence(pl_renderer rr, bool enabled, float offset);
 +
@@ -131,20 +131,21 @@ index 576528b..9e768ed 100644
  retry:
      for (int i = 0; i < images->num_frames; i++) {
          uint64_t sig = images->signatures[i];
-@@ -3749,7 +3779,11 @@ retry:
+@@ -3749,7 +3779,12 @@ retry:
          }
  
          float weight;
 -        if (single_frame) {
 +        if (camera) {
-+            if (abs(i - camera_ref) > 1)
++            if (i < camera_ref - 1 ||
++                i > camera_ref + (rr->camera_pan_smoothing ? 3 : 1))
 +                continue;
 +            weight = img == refimg ? 1.0 : 0.0;
 +        } else if (single_frame) {
  
              // Only render the refimg, ignore others
              if (img == refimg) {
-@@ -3811,7 +3845,7 @@ retry:
+@@ -3811,7 +3846,7 @@ retry:
          // also exclude the reference image from this optimization to ensure
          // that we always have at least one frame.
          const float cutoff = 1e-3;
@@ -153,7 +154,7 @@ index 576528b..9e768ed 100644
              PL_TRACE(rr, "   -> Skipping: weight (%f) below threshold (%f)",
                       weight, cutoff);
              continue;
-@@ -3836,7 +3870,7 @@ retry:
+@@ -3836,7 +3871,7 @@ retry:
          // Check to see if we can blindly reuse this cache entry. This is the
          // case if either the params are compatible, or the user doesn't care
          bool can_reuse = f->tex;
@@ -162,7 +163,7 @@ index 576528b..9e768ed 100644
                              !params->preserve_mixing_cache;
          if (can_reuse && strict_reuse) {
              can_reuse = f->tex->params.w == out_w &&
-@@ -3940,6 +3974,7 @@ retry:
+@@ -3940,6 +3975,7 @@ retry:
              f->color = inter_pass.img.color;
              f->comps = inter_pass.img.comps;
              f->profile = target->profile;
@@ -170,7 +171,7 @@ index 576528b..9e768ed 100644
              // fall through
  
  inter_pass_error:
-@@ -3952,6 +3987,7 @@ inter_pass_error:
+@@ -3952,6 +3988,7 @@ inter_pass_error:
          pl_assert(fidx < MAX_MIX_FRAMES);
          frames[fidx] = *f;
          weights[fidx] = weight;
@@ -178,7 +179,7 @@ index 576528b..9e768ed 100644
          wsum += weight;
          fidx++;
      }
-@@ -3982,6 +4018,42 @@ inter_pass_error:
+@@ -3982,6 +4019,48 @@ inter_pass_error:
      pl_assert(fidx > 0);
  
      pl_shader sh = pl_dispatch_begin(rr->dp);
@@ -199,10 +200,16 @@ index 576528b..9e768ed 100644
 +                if (!rr->camera)
 +                    goto camera_error;
 +                ajn_camera_set_rigid(rr->camera, rr->camera_pan_smoothing);
-+                if (!ajn_camera_frame(rr->camera, frames[base].camera_signature, frames[base].tex) ||
-+                    !ajn_camera_frame(rr->camera, frames[neighbor].camera_signature, frames[neighbor].tex))
-+                    goto camera_error;
 +                int before = PL_MIN(base, neighbor), after = PL_MAX(base, neighbor);
++                int first = rr->camera_pan_smoothing ? 0 : before;
++                int last = rr->camera_pan_smoothing ? fidx - 1 : after;
++                for (int i = first; i <= last; i++) {
++                    if (!ajn_camera_frame(rr->camera, frames[i].camera_signature, frames[i].tex))
++                        goto camera_error;
++                    if (i > first && !ajn_camera_pair(rr->camera, frames[i-1].camera_signature,
++                                                                  frames[i].camera_signature))
++                        goto camera_error;
++                }
 +                pl_tex motion = ajn_camera_pair(rr->camera, frames[before].camera_signature,
 +                                               frames[after].camera_signature);
 +                if (!motion || !ajn_camera_sample(rr->camera, sh, frames[base].tex,
@@ -221,7 +228,7 @@ index 576528b..9e768ed 100644
      sh_describef(sh, "frame mixing (%d frame%s)", fidx, fidx > 1 ? "s" : "");
      sh->output = PL_SHADER_SIG_COLOR;
      sh->output_w = out_w;
-@@ -3992,8 +4064,9 @@ inter_pass_error:
+@@ -3992,8 +4071,9 @@ inter_pass_error:
           "{                             \n"
           "vec4 mix_color = vec4(0.0);   \n");
  
@@ -232,7 +239,7 @@ index 576528b..9e768ed 100644
          const struct pl_tex_params *tpars = &frames[i].tex->params;
  
          // Use linear sampling if desired and possible
-@@ -4030,7 +4103,8 @@ inter_pass_error:
+@@ -4030,7 +4110,8 @@ inter_pass_error:
      GLSL("color = mix_color; \n"
           "}                  \n");
  
@@ -242,7 +249,7 @@ index 576528b..9e768ed 100644
      pass.img = (struct img) {
          .sh = sh,
          .w = out_w,
-@@ -4051,6 +4125,12 @@ inter_pass_error:
+@@ -4051,6 +4132,12 @@ inter_pass_error:
      pass_uninit(&pass);
      return true;
  

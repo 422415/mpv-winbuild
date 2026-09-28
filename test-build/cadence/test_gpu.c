@@ -308,6 +308,43 @@ int main(int argc,char **argv) {
         verify_sample(gpu,dp,out,4+2.0f/3);
         verify_animated_drawing(gpu,dp,out,phase,after);
     }
+    // Confirm the beginning from lookahead, then remove a single held camera
+    // interval without discontinuity when the selected original frame changes.
+    ajn_camera_reset(camera);
+    const float positions[]={0,1,2,2,3,4};
+    pl_tex pairs[5];
+    for(int i=0;i<6;i++) {
+        generate(dp,a,positions[i]*1.8f,positions[i]*0.25f,0);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) { pairs[i-1]=ajn_camera_pair(camera,i,i+1); CHECK(pairs[i-1]); }
+    }
+    generate(dp,a,0,0,0); generate(dp,b,1.8f,0.25f,0);
+    pl_shader start=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,start,a,b,pairs[0],0.5f));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&start,.target=out)));
+    verify_sample(gpu,dp,out,0.5f);
+    for(int i=1;i<=3;i++) for(int after=0;after<2;after++) {
+        generate(dp,a,positions[i]*1.8f,positions[i]*0.25f,0);
+        generate(dp,b,positions[i+1]*1.8f,positions[i+1]*0.25f,0);
+        pl_shader sh=pl_dispatch_begin(dp);
+        CHECK(ajn_camera_sample(camera,sh,after?b:a,after?a:b,pairs[i],
+                                after?-1.0f/3:2.0f/3));
+        CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
+        verify_sample(gpu,dp,out,1+(i-1+2.0f/3)*2.0f/3);
+    }
+    // A longer source camera stop remains stationary.
+    ajn_camera_reset(camera);
+    const float stopped[]={0,1,2,2,2,3};
+    for(int i=0;i<6;i++) {
+        generate(dp,a,stopped[i]*1.8f,stopped[i]*0.25f,0);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) { pairs[i-1]=ajn_camera_pair(camera,i,i+1); CHECK(pairs[i-1]); }
+    }
+    generate(dp,a,3.6f,0.5f,0); generate(dp,b,3.6f,0.5f,0);
+    pl_shader stop=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,stop,a,b,pairs[2],2.0f/3));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&stop,.target=out)));
+    verify_unchanged(gpu,dp,a,out);
     ajn_camera_reset(camera);
     for(int i=0;i<6;i++) {
         pl_tex tex=i%2?b:a;

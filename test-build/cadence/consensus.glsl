@@ -1,7 +1,7 @@
 shared vec4 tracks[128],totals[128];
 shared uint valid_count,inlier_count,coverage;
 shared vec2 candidate;
-shared uint mismatches,checked,rejected_tiles;
+shared uint rejected_tiles;
 void run_consensus() {
     uint lane=gl_LocalInvocationID.x;
     vec4 f=texelFetch(forward_flow,ivec2(lane,0),0);
@@ -43,7 +43,7 @@ void run_consensus() {
     bool ok=valid_count>=24u && float(inlier_count)>=0.82*float(valid_count) && bitCount(coverage)>=8;
     if(lane==0u) {
         candidate=ok ? totals[0].xy/float(inlier_count):vec2(0);
-        mismatches=0u; checked=0u; rejected_tiles=0u;
+        rejected_tiles=0u;
     }
     barrier();
     // Sparse tracks establish the camera model, but averaging their subpixel
@@ -87,23 +87,35 @@ void run_consensus() {
     // turn the entire pan off just because a small animated region disagrees.
     ivec2 tile=ivec2(int(lane)%16,int(lane)/16);
     bool protect=false;
+    vec3 errors=vec3(0);
     if(ok) {
         uint bad=0u,count=0u;
         for(int y=1;y<45;y+=2) for(int x=1;x<40;x+=2) {
             vec2 p=vec2(tile*ivec2(40,45)+ivec2(x,y))+0.5;
+            // Give both images equivalent bilinear filtering. Sampling one at
+            // its pixel centers and only resampling the other makes fine static
+            // detail appear to animate. Align around a shared half-way grid.
+            vec2 scale=vec2(640,360)/vec2(textureSize(luma_before,0));
+            vec2 middle=(floor((p+candidate*0.5)/scale)+0.5)*scale;
+            p=middle-candidate*0.5;
             vec2 q=p+candidate;
             if(any(lessThan(p,vec2(4))) || any(greaterThan(p,vec2(636,356))) ||
                any(lessThan(q,vec2(4))) || any(greaterThan(q,vec2(636,356)))) continue;
             float a=textureLod(luma_before,p/vec2(640,360),0.0).r;
             float b=textureLod(luma_after,q/vec2(640,360),0.0).r;
             if(abs(a-b)>0.04) bad++;
+            errors+=vec3(abs(a-b),abs(a-textureLod(luma_after,p/vec2(640,360),0.0).r),1);
             count++;
         }
         protect=count>0u && float(bad)>0.12*float(count);
         if(protect) atomicAdd(rejected_tiles,1u);
-        else { atomicAdd(mismatches,bad); atomicAdd(checked,count); }
     }
+    totals[lane]=protect ? vec4(0):vec4(errors,0);
     barrier();
+    for(uint step=64u;step>0u;step/=2u) {
+        if(lane<step) totals[lane]+=totals[lane+step];
+        barrier();
+    }
     // Three source pairs of protection cover held drawings. Carry protection
     // both in screen space and along the preceding camera translation: local
     // animation need not move at the camera's speed. Store undilated history;
@@ -119,9 +131,14 @@ void run_consensus() {
     age=protect ? 3.0:max(age,0.0);
     imageStore(dst,tile+ivec2(0,1),vec4(age,0,0,0));
     if(lane==0u) {
-        // Large independently animated regions and broad parallax still reject
-        // the pair. The remaining background must meet the original error limit.
-        ok=ok && checked>0u && float(mismatches)<=0.01*float(checked) && rejected_tiles<=12u;
+        // Require low mean background error AND a clear improvement over
+        // leaving moving images unaligned. Counting every sharp-edge residual
+        // above one threshold was resolution-dependent and rejected real pans.
+        float count=totals[0].z;
+        float error=totals[0].x/max(count,1.0);
+        float original_error=totals[0].y/max(count,1.0);
+        ok=ok && count>0.0 && error<=0.01 && rejected_tiles<=12u &&
+           (length(candidate)<0.5 || error<=0.5*original_error);
         // A single well-aligned pair inside an animated shot must not turn
         // correction on for one frame. Count distinct, connected source pairs
         // on the GPU; cached presentation repeats never advance this streak.

@@ -36,6 +36,10 @@ available when mpv is built with this patched libplacebo.
 The GPU detector uses three luma pyramid levels, tiled corner selection and
 forward/backward Lucas–Kanade tracking. It chooses the most-supported translation
 and refines it with three robust alignment steps on the existing GPU luma images.
+Image consistency uses the existing 320×180 level and symmetric half-way
+sampling, so fine source detail and subpixel filtering are not mistaken for
+animation. The background must have low mean alignment error; appreciable
+camera movement must also halve the error compared with leaving it unaligned.
 Before translating the image, it checks whether the camera estimate aligns the
 actual image content. Small inconsistent regions retain their selected original
 pixels while the rest of the background can receive correction. Large animated

@@ -1,5 +1,29 @@
 # Experimental GPU camera cadence
 
+## Separate rigid-pan experiment
+
+`camera-pan-smoothing=yes` selects a different presentation schedule: camera
+position advances at each refresh of a display running at an integer multiple
+of the source rate. For 24 to 72, the phases are 0, 1/3 and 2/3. Source drawing
+changes retain their timestamps. This mode takes precedence over the older
+`camera-cadence` experiment; the older mode remains available unchanged.
+
+The initial scope is one coherent translation across the image. It requires
+the established GPU tracking consensus and no rejected image-consistency tiles,
+plus the existing three-pair warm-up. Independently moving regions reject the
+whole pair. Presentation applies a uniform translation, without a regional
+mask, bending transition, or blending between animation drawings. The adjacent
+frame can supply newly revealed borders. This cannot guarantee perfect scene
+classification or reconstruct zoom, parallax, or arbitrary animation layers.
+
+Use `video-sync=display-resample`, `interpolation=no`, `blend-subtitles=no`,
+Vulkan/NVDEC, and a supported multiple such as nominal 72 Hz for 23.976 fps.
+An unmatched display rate bypasses this experiment. It does not change display
+modes itself. Production has no frame or motion-vector readback; the existing
+three Vulkan queues and source-frame inference rate are retained.
+
+## Original cadence experiment
+
 This code is built into the pinned libplacebo renderer by
 `libplacebo-camera-cadence.patch`. It analyzes cached, processed video textures
 and merges a rigid translation into the presentation shader. It does not run

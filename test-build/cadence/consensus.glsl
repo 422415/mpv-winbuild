@@ -139,6 +139,9 @@ void run_consensus() {
         float original_error=totals[0].y/max(count,1.0);
         ok=ok && count>0.0 && error<=0.01 && rejected_tiles<=12u &&
            (length(candidate)<0.5 || error<=0.5*original_error);
+        // A rigid pan cannot leave an independently animated region behind.
+        // Reject the whole pair instead of bending the background around it.
+        if(rigid_pan!=0) ok=ok && rejected_tiles==0u;
         // A single well-aligned pair inside an animated shot must not turn
         // correction on for one frame. Count distinct, connected source pairs
         // on the GPU; cached presentation repeats never advance this streak.

@@ -9,6 +9,9 @@ struct ajn_camera;
 struct ajn_camera *ajn_camera_create(pl_gpu gpu, pl_dispatch dispatch);
 void ajn_camera_destroy(struct ajn_camera **camera);
 void ajn_camera_reset(struct ajn_camera *camera);
+// Strict pan mode applies one translation to the entire original drawing.
+// Changing mode invalidates confidence history; no GPU data is downloaded.
+void ajn_camera_set_rigid(struct ajn_camera *camera, bool rigid);
 
 // Cache luma pyramids by rendered-frame identity. No host-visible GPU storage.
 bool ajn_camera_frame(struct ajn_camera *camera, uint64_t signature, pl_tex frame);

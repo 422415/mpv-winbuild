@@ -79,17 +79,19 @@ static void verify(pl_gpu gpu,pl_dispatch dp,pl_tex motion,bool expect_motion,co
     pl_tex_destroy(gpu,&assertion);
 }
 
-static void verify_sample(pl_gpu gpu,pl_dispatch dp,pl_tex tex) {
+static void verify_sample(pl_gpu gpu,pl_dispatch dp,pl_tex tex,float fraction) {
     pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
     pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true));
     CHECK(assertion);
     struct pl_shader_desc d[]={read_tex("picture",tex),write_tex(assertion)};
+    struct pl_shader_var phase={.var=pl_var_float("phase"),.data=&fraction};
     pl_shader sh=pl_dispatch_begin(dp);
     struct pl_custom_shader cs={.description="GPU presentation assertion",.compute=true,.compute_group_size={1,1},
         .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=2,
+        .variables=&phase,.num_variables=1,
         .body="ivec2 s=textureSize(picture,0); float error=0.0;"
               "for(int i=0;i<16;i++) { ivec2 p=s/4+ivec2(i%4,i/4)*32;"
-              "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-vec2(1.8,0.25)*0.37;"
+              "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-vec2(1.8,0.25)*phase;"
               "float expected=0.45+0.18*cos(q.x*0.15)*cos(q.y*0.37)+0.12*sin(q.x*0.07+q.y*0.08)+0.1*sin(q.x*0.43)*cos(q.y*0.24);"
               "error=max(error,abs(texelFetch(picture,p,0).r-expected)); }"
               "imageStore(dst,ivec2(0),vec4(error<0.003 ? 1.0:0.0,error,0,0));"};
@@ -163,7 +165,7 @@ int main(int argc,char **argv) {
         pl_shader sh=pl_dispatch_begin(dp);
         CHECK(ajn_camera_sample(camera,sh,reverse?b:a,reverse?a:b,motion,reverse?-0.63f:0.37f));
         CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
-        verify_sample(gpu,dp,out);
+        verify_sample(gpu,dp,out,0.37f);
     }
     for(int k=0;k<76;k++) {
         if(k==12) { pl_gpu_finish(gpu); timing_count=0; memset(timings,0,sizeof(timings)); }
@@ -204,6 +206,29 @@ int main(int argc,char **argv) {
         CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
         verify_protected_sample(gpu,dp,reverse?b:a,out);
     }
+    // The separate pan mode uses full-frame translation at source-aligned
+    // 72 Hz phases. Original source instants and held drawing geometry remain.
+    ajn_camera_set_rigid(camera,true);
+    motion=coherent_pair(camera,dp,a,b);
+    verify(gpu,dp,motion,true,"rigid pan");
+    for(int tick=0;tick<3;tick++) {
+        float fraction=tick/3.0f;
+        pl_shader sh=pl_dispatch_begin(dp);
+        CHECK(ajn_camera_sample(camera,sh,a,b,motion,fraction));
+        CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
+        verify_sample(gpu,dp,out,fraction);
+    }
+    ajn_camera_reset(camera);
+    for(int i=0;i<6;i++) {
+        pl_tex tex=i%2?b:a;
+        generate(dp,tex,i*1.8f,i*0.25f,2);
+        CHECK(ajn_camera_frame(camera,i+1,tex));
+        if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
+    }
+    verify(gpu,dp,motion,false,"rigid pan rejects independently moving foreground");
+    // Switching experiments must not carry mature confidence across modes.
+    ajn_camera_set_rigid(camera,false);
+    CHECK(!ajn_camera_pair(camera,5,6));
     ajn_camera_destroy(&camera);
     pl_tex_destroy(gpu,&a); pl_tex_destroy(gpu,&b); pl_tex_destroy(gpu,&out);
     pl_dispatch_destroy(&dp); pl_vulkan_destroy(&vk); pl_log_destroy(&log);

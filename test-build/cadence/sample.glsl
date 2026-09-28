@@ -29,7 +29,8 @@ vec4 sample_camera() {
     vec2 before_pos=pos-(fraction<0.0 ? delta:vec2(0));
     // Protect both the destination and the translated sampling footprint so
     // an animated object cannot leave a shifted copy in the background.
-    float protection=max(protected_region(before_pos),protected_region(before_pos-info.xy/vec2(size)));
+    float protection=rigid_pan!=0 ? 0.0:
+        max(protected_region(before_pos),protected_region(before_pos-info.xy/vec2(size)));
     if(protection>=1.0)
         return texelFetch(base,clamp(ivec2(round(pixel)),ivec2(0),size-1),0);
     info.xy*=1.0-protection;

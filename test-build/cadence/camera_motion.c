@@ -16,6 +16,7 @@ struct ajn_camera {
     pl_gpu gpu;
     pl_dispatch dispatch;
     uint64_t clock;
+    bool rigid;
     struct frame_slot slots[SLOTS];
     pl_tex points, forward, backward, weights;
 };
@@ -95,6 +96,14 @@ void ajn_camera_reset(struct ajn_camera *c)
     for (int i=0;i<SLOTS;i++) c->slots[i].valid=c->slots[i].paired=false;
 }
 
+void ajn_camera_set_rigid(struct ajn_camera *c,bool rigid)
+{
+    if (c->rigid != rigid) {
+        ajn_camera_reset(c);
+        c->rigid = rigid;
+    }
+}
+
 static struct frame_slot *find(struct ajn_camera *c,uint64_t signature)
 {
     for (int i=0;i<SLOTS;i++)
@@ -165,8 +174,11 @@ pl_tex ajn_camera_pair(struct ajn_camera *c,uint64_t before,uint64_t after)
                                     // Bind an unused luma level for the first
                                     // pair; the uniform prevents reading it.
                                     sampled("history",a->paired?a->motion:a->pyramid[2])};
-    struct pl_shader_var history={.var=pl_var_int("history_valid"),.data=&history_valid};
-    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,7,&history,1,128,1,1,1,128*32+40))
+    int rigid=c->rigid;
+    struct pl_shader_var uniforms[]={
+        {.var=pl_var_int("history_valid"),.data=&history_valid},
+        {.var=pl_var_int("rigid_pan"),.data=&rigid}};
+    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,7,uniforms,2,128,1,1,1,128*32+40))
         return NULL;
     b->before=before;
     b->paired=true;
@@ -187,11 +199,14 @@ bool ajn_camera_sample(struct ajn_camera *c,pl_shader sh,pl_tex base,pl_tex neig
                                   .data={coords[0],coords[1],coords[2],coords[3]}};
     struct pl_shader_desc inputs[]={sampled("base",base),sampled("neighbor",neighbor),
                                     sampled("motion",motion),sampled("weights",c->weights)};
+    int rigid=c->rigid;
+    struct pl_shader_var sampling[]={v[1],
+        {.var=pl_var_int("rigid_pan"),.data=&rigid}};
     struct pl_custom_shader program={
         .description="camera motion: Lanczos4 presentation",
         .header=cm_sample_glsl,.body="color = sample_camera();",
         .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_COLOR,
-        .descriptors=inputs,.num_descriptors=4,.variables=&v[1],.num_variables=1,
+        .descriptors=inputs,.num_descriptors=4,.variables=sampling,.num_variables=2,
         .vertex_attribs=&position,.num_vertex_attribs=1,
         .output_w=base->params.w,.output_h=base->params.h};
     return pl_shader_custom(sh,&program);

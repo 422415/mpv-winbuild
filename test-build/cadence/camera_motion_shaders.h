@@ -260,8 +260,14 @@ static const char cm_consensus_glsl[] =
 "    barrier();\n"
 "    if(lane==0u) {\n"
 "        ok=ok && checked>0u && float(mismatches)<=0.01*float(checked) && rejected_tiles==0u;\n"
-"        vec2 motion=ok ? candidate/vec2(640,360):vec2(0);\n"
-"        imageStore(dst,ivec2(0),vec4(motion,ok ? 1.0:0.0,float(inlier_count)));\n"
+"        // A single well-aligned pair inside an animated shot must not turn\n"
+"        // correction on for one frame. Count distinct, connected source pairs\n"
+"        // on the GPU; cached presentation repeats never advance this streak.\n"
+"        float previous=history_valid!=0 ? texelFetch(history,ivec2(0),0).w:0.0;\n"
+"        float streak=ok ? min(previous+1.0,3.0):0.0;\n"
+"        bool apply=streak>=3.0;\n"
+"        vec2 motion=apply ? candidate/vec2(640,360):vec2(0);\n"
+"        imageStore(dst,ivec2(0),vec4(motion,apply ? 1.0:0.0,streak));\n"
 "    }\n"
 "}\n";
 static const char cm_weights_glsl[] =

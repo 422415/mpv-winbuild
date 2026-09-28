@@ -39,6 +39,11 @@ Before translating the image, it checks whether that translation also aligns
 the image content across the frame. Independently animated foreground objects
 and parallax can otherwise be outvoted by background tracks; those pairs keep
 the original pose instead. This check runs on the existing GPU luma textures.
+Correction also requires three consecutive accepted source-frame pairs. Any
+rejected pair resets that GPU confidence history; repeated display samples of
+one pair do not advance it. This prevents isolated valid pairs inside complex
+animation from causing short bursts of correction. A clean pan starts correcting
+after the initial two-pair warm-up, without adding playback buffering.
 Uncertain motion and cuts retain the selected original pose. Confident pans use
 Lanczos4 translation, with a neighboring original frame supplying exposed edges.
 This is a perceptual experiment, not bit-exact/lossless output or a general motion

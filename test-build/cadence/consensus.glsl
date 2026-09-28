@@ -70,7 +70,13 @@ void run_consensus() {
     barrier();
     if(lane==0u) {
         ok=ok && checked>0u && float(mismatches)<=0.01*float(checked) && rejected_tiles==0u;
-        vec2 motion=ok ? candidate/vec2(640,360):vec2(0);
-        imageStore(dst,ivec2(0),vec4(motion,ok ? 1.0:0.0,float(inlier_count)));
+        // A single well-aligned pair inside an animated shot must not turn
+        // correction on for one frame. Count distinct, connected source pairs
+        // on the GPU; cached presentation repeats never advance this streak.
+        float previous=history_valid!=0 ? texelFetch(history,ivec2(0),0).w:0.0;
+        float streak=ok ? min(previous+1.0,3.0):0.0;
+        bool apply=streak>=3.0;
+        vec2 motion=apply ? candidate/vec2(640,360):vec2(0);
+        imageStore(dst,ivec2(0),vec4(motion,apply ? 1.0:0.0,streak));
     }
 }

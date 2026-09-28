@@ -101,6 +101,20 @@ static void verify_sample(pl_gpu gpu,pl_dispatch dp,pl_tex tex) {
     pl_tex_destroy(gpu,&assertion);
 }
 
+// Prime a connected, coherent source history ending with a at offset zero
+// and b at (1.8, .25), so presentation assertions keep their analytic target.
+static pl_tex coherent_pair(struct ajn_camera *camera,pl_dispatch dp,pl_tex a,pl_tex b) {
+    ajn_camera_reset(camera);
+    pl_tex motion=NULL;
+    for(int i=0;i<4;i++) {
+        pl_tex tex=i==3?b:a;
+        generate(dp,tex,(i-2)*1.8f,(i-2)*0.25f,0);
+        CHECK(ajn_camera_frame(camera,i+1,tex));
+        if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
+    }
+    return motion;
+}
+
 int main(int argc,char **argv) {
     int w=argc>1?atoi(argv[1]):1920,h=argc>2?atoi(argv[2]):1080;
     pl_log log=pl_log_create(PL_API_VER,pl_log_params(.log_cb=logger,.log_level=PL_LOG_WARN));
@@ -117,6 +131,10 @@ int main(int argc,char **argv) {
     generate(dp,a,0,0,0); generate(dp,b,1.8,0.25,0);
     CHECK(ajn_camera_frame(camera,1,a)); CHECK(ajn_camera_frame(camera,2,b));
     pl_tex motion=ajn_camera_pair(camera,1,2); CHECK(motion);
+    verify(gpu,dp,motion,false,"isolated good pair");
+    for(int i=0;i<8;i++) motion=ajn_camera_pair(camera,1,2);
+    verify(gpu,dp,motion,false,"cached repeats do not establish a pan");
+    motion=coherent_pair(camera,dp,a,b);
     verify(gpu,dp,motion,true,"translation");
     for(int reverse=0;reverse<2;reverse++) {
         pl_shader sh=pl_dispatch_begin(dp);
@@ -126,11 +144,10 @@ int main(int argc,char **argv) {
     }
     for(int k=0;k<76;k++) {
         if(k==12) { pl_gpu_finish(gpu); timing_count=0; memset(timings,0,sizeof(timings)); }
-        // One analysis pair per source frame, five display samples per two pairs.
+        // Rebuild a coherent source history; timings are per GPU pass, with
+        // the warmed correction active rather than profiling the cold bypass.
         if(k%5==0 || k%5==3) {
-            ajn_camera_reset(camera);
-            CHECK(ajn_camera_frame(camera,1,a)); CHECK(ajn_camera_frame(camera,2,b));
-            motion=ajn_camera_pair(camera,1,2); CHECK(motion);
+            motion=coherent_pair(camera,dp,a,b);
         }
         pl_shader sh=pl_dispatch_begin(dp);
         CHECK(ajn_camera_sample(camera,sh,a,b,motion,0.37f));
@@ -141,12 +158,22 @@ int main(int argc,char **argv) {
     printf("resolution %dx%d; three GPU queues; warmed GPU pass timings\n",w,h);
     for(int i=0;i<timing_count;i++)
         printf("%s: mean=%.6f ms peak=%.6f ms observations=%d\n",timings[i].name,timings[i].sum/timings[i].count,timings[i].peak,timings[i].count);
-    generate(dp,b,0,0,1); ajn_camera_reset(camera);
-    CHECK(ajn_camera_frame(camera,3,a)); CHECK(ajn_camera_frame(camera,4,b));
-    motion=ajn_camera_pair(camera,3,4); CHECK(motion); verify(gpu,dp,motion,false,"cut");
-    generate(dp,a,0,0,2); generate(dp,b,1.8,0.25,2); ajn_camera_reset(camera);
-    CHECK(ajn_camera_frame(camera,5,a)); CHECK(ajn_camera_frame(camera,6,b));
+    // Reject a cut from an already mature pan, without resetting its cache.
+    generate(dp,a,0,0,1); CHECK(ajn_camera_frame(camera,5,a));
+    motion=ajn_camera_pair(camera,4,5); CHECK(motion); verify(gpu,dp,motion,false,"cut");
+    // One good pair after a rejected scene must not immediately reactivate.
+    generate(dp,b,1.8,0.25,1); CHECK(ajn_camera_frame(camera,6,b));
     motion=ajn_camera_pair(camera,5,6); CHECK(motion);
+    verify(gpu,dp,motion,false,"isolated reactivation after rejection");
+    // Keep the independently moving foreground fixture connected long enough
+    // that a failure cannot be hidden by the history warm-up requirement.
+    ajn_camera_reset(camera);
+    for(int i=0;i<6;i++) {
+        pl_tex tex=i%2?b:a;
+        generate(dp,tex,i*1.8f,i*0.25f,2);
+        CHECK(ajn_camera_frame(camera,i+1,tex));
+        if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
+    }
     verify(gpu,dp,motion,false,"independent foreground over a pan");
     ajn_camera_destroy(&camera);
     pl_tex_destroy(gpu,&a); pl_tex_destroy(gpu,&b); pl_tex_destroy(gpu,&out);

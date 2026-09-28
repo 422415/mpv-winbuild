@@ -155,10 +155,15 @@ pl_tex ajn_camera_pair(struct ajn_camera *c,uint64_t before,uint64_t after)
         if (!run(c,"camera motion: track",reverse?cm_track_reverse_glsl:cm_track_glsl,"run_track();",track,reverse?9:8,&v,1,128,1,128,1,128*24+32))
             return NULL;
     }
+    int history_valid=a->paired;
     struct pl_shader_desc reduce[]={sampled("forward_flow",c->forward),sampled("backward_flow",c->backward),
                                     sampled("points",c->points),output(b->motion),
-                                    sampled("luma_before",a->pyramid[0]),sampled("luma_after",b->pyramid[0])};
-    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,6,NULL,0,128,1,1,1,128*16+40))
+                                    sampled("luma_before",a->pyramid[0]),sampled("luma_after",b->pyramid[0]),
+                                    // Bind an unused luma level for the first
+                                    // pair; the uniform prevents reading it.
+                                    sampled("history",a->paired?a->motion:a->pyramid[1])};
+    struct pl_shader_var history={.var=pl_var_int("history_valid"),.data=&history_valid};
+    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,7,&history,1,128,1,1,1,128*16+40))
         return NULL;
     b->before=before;
     b->paired=true;

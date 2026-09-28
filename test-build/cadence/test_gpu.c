@@ -130,16 +130,24 @@ static void verify_protected_sample(pl_gpu gpu,pl_dispatch dp,pl_tex base,pl_tex
     CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
 }
 
-static void verify_animated_drawing(pl_gpu gpu,pl_dispatch dp,pl_tex picture) {
+static void verify_animated_drawing(pl_gpu gpu,pl_dispatch dp,pl_tex picture,float fraction,bool after) {
     pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
     pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true)); CHECK(assertion);
     struct pl_shader_desc d[]={read_tex("picture",picture),write_tex(assertion)};
+    float source=after?5:4,other=after?4:5;
+    struct pl_shader_var v[]={
+        {.var=pl_var_float("phase"),.data=&fraction},
+        {.var=pl_var_float("source_frame"),.data=&source},
+        {.var=pl_var_float("other_frame"),.data=&other}};
     pl_shader sh=pl_dispatch_begin(dp);
     struct pl_custom_shader cs={.description="GPU original drawing assertion",.compute=true,.compute_group_size={1,1},
-        .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=2,
+        .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=2,.variables=v,.num_variables=3,
         .body="vec2 s=vec2(textureSize(picture,0));"
-              "float original=texelFetch(picture,ivec2(vec2(148.266,65.0925)/vec2(640,360)*s),0).r;"
-              "float future=texelFetch(picture,ivec2(vec2(162.666,60.0925)/vec2(640,360)*s),0).r;"
+              "vec2 shift=vec2(1.8,0.25)*phase;"
+              "vec2 original_pos=vec2(90+source_frame*14.4,85-source_frame*5)+shift;"
+              "vec2 other_pos=vec2(90+other_frame*14.4,85-other_frame*5)+shift;"
+              "float original=texelFetch(picture,ivec2(original_pos/vec2(640,360)*s),0).r;"
+              "float future=texelFetch(picture,ivec2(other_pos/vec2(640,360)*s),0).r;"
               "imageStore(dst,ivec2(0),vec4(original>0.98 && future<0.90 ? 1.0:0.0,original,future,0));"};
     CHECK(pl_shader_custom(sh,&cs));
     CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
@@ -277,7 +285,17 @@ int main(int argc,char **argv) {
     pl_shader drawing=pl_dispatch_begin(dp);
     CHECK(ajn_camera_sample(camera,drawing,a,b,motion,0.37f));
     CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&drawing,.target=out)));
-    verify_animated_drawing(gpu,dp,out);
+    verify_animated_drawing(gpu,dp,out,0.37f,false);
+    // A drawing changes at 24 fps while a 36 fps camera holds its position:
+    // A + 2/3 and B - 1/3 have the same background, but different original poses.
+    for(int after=0;after<2;after++) {
+        float phase=after?-1.0f/3:2.0f/3;
+        pl_shader sh=pl_dispatch_begin(dp);
+        CHECK(ajn_camera_sample(camera,sh,after?b:a,after?a:b,motion,phase));
+        CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
+        verify_sample(gpu,dp,out,4+2.0f/3);
+        verify_animated_drawing(gpu,dp,out,phase,after);
+    }
     ajn_camera_reset(camera);
     for(int i=0;i<6;i++) {
         pl_tex tex=i%2?b:a;

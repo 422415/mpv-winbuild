@@ -6,18 +6,23 @@ void run_consensus() {
     uint lane=gl_LocalInvocationID.x;
     vec4 f=texelFetch(forward_flow,ivec2(lane,0),0);
     vec4 b=texelFetch(backward_flow,ivec2(lane,0),0);
+    vec4 point=texelFetch(points,ivec2(lane,0),0);
+    // Low-contrast grain can pass a forward/backward check without locating
+    // the drawing reliably. Weight camera votes by corner strength, capped
+    // so a few sharp animated features cannot dominate the whole image.
+    float weight=rigid_pan!=0 ? sqrt(min(max(point.z,0.0),0.01)):1.0;
     bool valid=f.w>0.5 && b.w>0.5 && length(f.xy+b.xy)<0.7;
     if(lane==0u) { valid_count=0u; inlier_count=0u; coverage=0u; }
     barrier();
     if(valid) atomicAdd(valid_count,1u);
-    tracks[lane]=vec4(f.xy,0,valid ? 1.0:0.0);
+    tracks[lane]=vec4(f.xy,weight,valid ? 1.0:0.0);
     barrier();
     // Choose the translation supported by the largest group. A component-wise
     // median can sit near one edge of an otherwise coherent group, rejecting
     // its opposite edge and intermittently losing a real pan.
     float support=0.0;
     if(valid) for(uint i=0u;i<128u;i++)
-        if(tracks[i].w>0.5 && length(tracks[i].xy-f.xy)<0.6) support+=1.0;
+        if(tracks[i].w>0.5 && length(tracks[i].xy-f.xy)<0.6) support+=tracks[i].z;
     totals[lane]=vec4(f.xy,support,0);
     barrier();
     for(uint step=64u;step>0u;step/=2u) {
@@ -28,7 +33,7 @@ void run_consensus() {
     vec2 center=totals[0].xy;
     barrier();
     bool inlier=valid && length(f.xy-center)<0.6;
-    totals[lane]=inlier ? vec4(f.xy,0,0):vec4(0);
+    totals[lane]=vec4(inlier ? f.xy:vec2(0),inlier ? weight:0.0,valid ? weight:0.0);
     if(inlier) {
         atomicAdd(inlier_count,1u);
         vec2 p=texelFetch(points,ivec2(lane,0),0).xy/vec2(640,360);
@@ -40,7 +45,9 @@ void run_consensus() {
         if(lane<step) totals[lane]+=totals[lane+step];
         barrier();
     }
-    bool ok=valid_count>=24u && float(inlier_count)>=0.82*float(valid_count) && bitCount(coverage)>=8;
+    bool consensus_ok=rigid_pan!=0 ? (inlier_count>=24u && totals[0].z>=0.82*totals[0].w)
+                              : float(inlier_count)>=0.82*float(valid_count);
+    bool ok=valid_count>=24u && consensus_ok && bitCount(coverage)>=8;
     if(lane==0u) {
         candidate=ok ? totals[0].xy/float(inlier_count):vec2(0);
         rejected_tiles=0u;

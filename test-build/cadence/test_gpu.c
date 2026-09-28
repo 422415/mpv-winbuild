@@ -47,6 +47,10 @@ static void generate(pl_dispatch dp,pl_tex tex,float dx,float dy,int cut) {
         // drawing must survive, without disabling the background's camera.
         "vec2 star=stationary-vec2(90+offset.x*8,85-offset.y*20);"
         "if(cut==3 && dot(star,star)<64.0) c=1.0;"
+        // A smooth area contains weak stationary texture, as with grain in
+        // flat anime shading. It must not outvote clear translating detail.
+        "if(cut==4 && stationary.x>400.0)"
+        " c=0.45+0.015*sin(stationary.x*0.73)*cos(stationary.y*0.59);"
         "imageStore(dst,p,vec4(c,c,c,1)); }";
     pl_shader sh=pl_dispatch_begin(dp);
     float offset[2]={dx,dy};
@@ -274,6 +278,14 @@ int main(int argc,char **argv) {
         if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
     }
     verify(gpu,dp,motion,false,"rigid pan rejects independently moving foreground");
+    ajn_camera_reset(camera);
+    for(int i=0;i<6;i++) {
+        pl_tex tex=i%2?b:a;
+        generate(dp,tex,i*1.8f,i*0.25f,4);
+        CHECK(ajn_camera_frame(camera,i+1,tex));
+        if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
+    }
+    verify(gpu,dp,motion,true,"clear camera tracks outweigh weak stationary texture");
     ajn_camera_reset(camera);
     for(int i=0;i<6;i++) {
         pl_tex tex=i%2?b:a;

@@ -21,6 +21,17 @@ mask, bending transition, or blending between animation drawings. The adjacent
 frame can supply newly revealed borders. This cannot guarantee perfect scene
 classification or reconstruct zoom, parallax, or arbitrary animation layers.
 
+Rigid-pan consensus weights each corner by the square root of its strength,
+capped at a strength of 0.01. This prevents weak grain in smooth shading from
+vetoing a pan supported by clear edges, while limiting the influence of a few
+sharp features. At least 24 agreeing tracks, 82% of valid tracking weight,
+and eight covered image regions are still required, followed by the existing
+dense image checks. The older cadence mode retains its unweighted voting.
+
+With `camera-pan-half-rate=yes`, camera positions are held for two refreshes
+(36 fps on a 72 Hz display). Source drawings still change on their own timeline,
+including when a new drawing needs translating back to a held camera position.
+
 Use `video-sync=display-resample`, `interpolation=no`, `blend-subtitles=no`,
 Vulkan/NVDEC, and a supported multiple such as nominal 72 Hz for 23.976 fps.
 An unmatched display rate bypasses this experiment. It does not change display

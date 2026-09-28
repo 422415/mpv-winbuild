@@ -7,7 +7,10 @@ float lanczos(float x) {
 void run_weights() {
     vec4 flow=texelFetch(motion,ivec2(0),0);
     vec2 displacement=flow.xy*image_size*fraction;
-    bool shifting=flow.z>0.5 && length(displacement)>0.02;
+    // Sub-analysis-pixel noise in held shots is not useful camera motion.
+    // Keep those original pixels exact instead of adding a fractional wobble.
+    bool moving=rigid_pan==0 || length(flow.xy*vec2(640,360))>=0.1;
+    bool shifting=flow.z>0.5 && moving && length(displacement)>0.02;
     if(!shifting) displacement=vec2(0);
     imageStore(dst,ivec2(0),vec4(displacement,shifting ? 1.0:0.0,0));
     // pixel - displacement has the same fractional part across the image.

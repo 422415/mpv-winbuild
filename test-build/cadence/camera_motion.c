@@ -178,7 +178,7 @@ pl_tex ajn_camera_pair(struct ajn_camera *c,uint64_t before,uint64_t after)
     struct pl_shader_var uniforms[]={
         {.var=pl_var_int("history_valid"),.data=&history_valid},
         {.var=pl_var_int("rigid_pan"),.data=&rigid}};
-    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,7,uniforms,2,128,1,1,1,128*32+40))
+    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,7,uniforms,2,128,1,1,1,128*32+48))
         return NULL;
     b->before=before;
     b->paired=true;
@@ -189,17 +189,18 @@ bool ajn_camera_sample(struct ajn_camera *c,pl_shader sh,pl_tex base,pl_tex neig
 {
     if (!ensure_tex(c,&c->weights,9,1,4)) return false;
     float size[2]={base->params.w,base->params.h};
+    int rigid=c->rigid;
     struct pl_shader_desc d[]={sampled("motion",motion),output(c->weights)};
     struct pl_shader_var v[]={
         {.var=pl_var_vec2("image_size"),.data=size,.dynamic=true},
-        {.var=pl_var_float("fraction"),.data=&fraction,.dynamic=true}};
-    if (!run(c,"camera motion: sampling weights",cm_weights_glsl,"run_weights();",d,2,v,2,1,1,1,1,0)) return false;
+        {.var=pl_var_float("fraction"),.data=&fraction,.dynamic=true},
+        {.var=pl_var_int("rigid_pan"),.data=&rigid}};
+    if (!run(c,"camera motion: sampling weights",cm_weights_glsl,"run_weights();",d,2,v,3,1,1,1,1,0)) return false;
     float coords[4][2]={{0,0},{1,0},{0,1},{1,1}};
     struct pl_shader_va position={.attr={.name="pos",.fmt=pl_find_vertex_fmt(c->gpu,PL_FMT_FLOAT,2)},
                                   .data={coords[0],coords[1],coords[2],coords[3]}};
     struct pl_shader_desc inputs[]={sampled("base",base),sampled("neighbor",neighbor),
                                     sampled("motion",motion),sampled("weights",c->weights)};
-    int rigid=c->rigid;
     struct pl_shader_var sampling[]={v[1],
         {.var=pl_var_int("rigid_pan"),.data=&rigid}};
     struct pl_custom_shader program={

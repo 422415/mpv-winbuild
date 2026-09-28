@@ -1,7 +1,7 @@
 shared vec4 tracks[128],totals[128];
 shared uint valid_count,inlier_count,coverage;
 shared vec2 candidate;
-shared uint rejected_tiles;
+shared uint rejected_tiles,stationary_tiles;
 void run_consensus() {
     uint lane=gl_LocalInvocationID.x;
     vec4 f=texelFetch(forward_flow,ivec2(lane,0),0);
@@ -44,6 +44,7 @@ void run_consensus() {
     if(lane==0u) {
         candidate=ok ? totals[0].xy/float(inlier_count):vec2(0);
         rejected_tiles=0u;
+        stationary_tiles=0u;
     }
     barrier();
     // Sparse tracks establish the camera model, but averaging their subpixel
@@ -109,6 +110,12 @@ void run_consensus() {
         }
         protect=count>0u && float(bad)>0.12*float(count);
         if(protect) atomicAdd(rejected_tiles,1u);
+        // Animated content may change drawing while sharing the camera pan.
+        // Moving those original drawings rigidly does not morph their poses.
+        // A region that fits substantially better with NO translation is
+        // different: moving it would introduce a wobble into a stationary
+        // foreground. Keep rejecting that case for the whole-frame mode.
+        if(protect && errors.y<0.5*errors.x) atomicAdd(stationary_tiles,1u);
     }
     totals[lane]=protect ? vec4(0):vec4(errors,0);
     barrier();
@@ -139,9 +146,10 @@ void run_consensus() {
         float original_error=totals[0].y/max(count,1.0);
         ok=ok && count>0.0 && error<=0.01 && rejected_tiles<=12u &&
            (length(candidate)<0.5 || error<=0.5*original_error);
-        // A rigid pan cannot leave an independently animated region behind.
-        // Reject the whole pair instead of bending the background around it.
-        if(rigid_pan!=0) ok=ok && rejected_tiles==0u;
+        // Limited animation no longer repeatedly disables an otherwise
+        // verified camera pan. The existing background fit and coverage
+        // requirements still reject large motion disagreements and cuts.
+        if(rigid_pan!=0) ok=ok && stationary_tiles==0u;
         // A single well-aligned pair inside an animated shot must not turn
         // correction on for one frame. Count distinct, connected source pairs
         // on the GPU; cached presentation repeats never advance this streak.

@@ -8,10 +8,15 @@ of the source rate. For 24 to 72, the phases are 0, 1/3 and 2/3. Source drawing
 changes retain their timestamps. This mode takes precedence over the older
 `camera-cadence` experiment; the older mode remains available unchanged.
 
-The initial scope is one coherent translation across the image. It requires
-the established GPU tracking consensus and no rejected image-consistency tiles,
-plus the existing three-pair warm-up. Independently moving regions reject the
-whole pair. Presentation applies a uniform translation, without a regional
+The initial scope is a coherent camera translation. It requires the established
+GPU tracking consensus, a verified background fit, and three source pairs of
+warm-up. Small animated regions may retain their original drawings while sharing
+the camera translation; their presence does not repeatedly disable a good pan.
+A changed region that fits substantially better without camera translation
+rejects the whole pair, protecting stationary foregrounds. Large inconsistent
+regions and cuts also reject it. Motions below 0.1 of an analysis pixel per
+source frame leave the original pixels untouched, avoiding tiny tracking-noise
+wobbles in held shots. Presentation applies a uniform translation, without a regional
 mask, bending transition, or blending between animation drawings. The adjacent
 frame can supply newly revealed borders. This cannot guarantee perfect scene
 classification or reconstruct zoom, parallax, or arbitrary animation layers.

@@ -43,6 +43,10 @@ static void generate(pl_dispatch dp,pl_tex tex,float dx,float dy,int cut) {
         "vec2 stationary=(vec2(p)+0.5)/vec2(s)*vec2(640,360);"
         "if(cut==2 && all(greaterThan(stationary,vec2(230,135))) && all(lessThan(stationary,vec2(330,215))))"
         " c=0.3+0.25*cos(stationary.x*0.5)*sin(stationary.y*0.4);"
+        // A small animated meteor over a genuine camera pan. Its original
+        // drawing must survive, without disabling the background's camera.
+        "vec2 star=stationary-vec2(90+offset.x*8,85-offset.y*20);"
+        "if(cut==3 && dot(star,star)<64.0) c=1.0;"
         "imageStore(dst,p,vec4(c,c,c,1)); }";
     pl_shader sh=pl_dispatch_begin(dp);
     float offset[2]={dx,dy};
@@ -123,6 +127,42 @@ static void verify_protected_sample(pl_gpu gpu,pl_dispatch dp,pl_tex base,pl_tex
     CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
     float result[4]; CHECK(pl_tex_download(gpu,pl_tex_transfer_params(.tex=assertion,.ptr=result)));
     printf("GPU assertion protected foreground: %s, foreground error %.6f, background error %.6f\n",result[0]>.5?"PASS":"FAIL",result[1],result[2]);
+    CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
+}
+
+static void verify_animated_drawing(pl_gpu gpu,pl_dispatch dp,pl_tex picture) {
+    pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
+    pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true)); CHECK(assertion);
+    struct pl_shader_desc d[]={read_tex("picture",picture),write_tex(assertion)};
+    pl_shader sh=pl_dispatch_begin(dp);
+    struct pl_custom_shader cs={.description="GPU original drawing assertion",.compute=true,.compute_group_size={1,1},
+        .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=2,
+        .body="vec2 s=vec2(textureSize(picture,0));"
+              "float original=texelFetch(picture,ivec2(vec2(148.266,65.0925)/vec2(640,360)*s),0).r;"
+              "float future=texelFetch(picture,ivec2(vec2(162.666,60.0925)/vec2(640,360)*s),0).r;"
+              "imageStore(dst,ivec2(0),vec4(original>0.98 && future<0.90 ? 1.0:0.0,original,future,0));"};
+    CHECK(pl_shader_custom(sh,&cs));
+    CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
+    float result[4]; CHECK(pl_tex_download(gpu,pl_tex_transfer_params(.tex=assertion,.ptr=result)));
+    printf("GPU assertion original animated drawing: %s, original %.6f, future %.6f\n",result[0]>.5?"PASS":"FAIL",result[1],result[2]);
+    CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
+}
+
+static void verify_unchanged(pl_gpu gpu,pl_dispatch dp,pl_tex base,pl_tex picture) {
+    pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
+    pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true)); CHECK(assertion);
+    struct pl_shader_desc d[]={read_tex("base",base),read_tex("picture",picture),write_tex(assertion)};
+    pl_shader sh=pl_dispatch_begin(dp);
+    struct pl_custom_shader cs={.description="GPU unchanged drawing assertion",.compute=true,.compute_group_size={1,1},
+        .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=3,
+        .body="ivec2 s=textureSize(picture,0); float error=0.0;"
+              "for(int y=1;y<16;y++) for(int x=1;x<16;x++) { ivec2 p=s*ivec2(x,y)/16;"
+              "error=max(error,length(texelFetch(base,p,0)-texelFetch(picture,p,0))); }"
+              "imageStore(dst,ivec2(0),vec4(error==0.0 ? 1.0:0.0,error,0,0));"};
+    CHECK(pl_shader_custom(sh,&cs));
+    CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
+    float result[4]; CHECK(pl_tex_download(gpu,pl_tex_transfer_params(.tex=assertion,.ptr=result)));
+    printf("GPU assertion negligible motion leaves drawing unchanged: %s, error %.6f\n",result[0]>.5?"PASS":"FAIL",result[1]);
     CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
 }
 
@@ -226,6 +266,29 @@ int main(int argc,char **argv) {
         if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
     }
     verify(gpu,dp,motion,false,"rigid pan rejects independently moving foreground");
+    ajn_camera_reset(camera);
+    for(int i=0;i<6;i++) {
+        pl_tex tex=i%2?b:a;
+        generate(dp,tex,i*1.8f,i*0.25f,3);
+        CHECK(ajn_camera_frame(camera,i+1,tex));
+        if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
+    }
+    verify(gpu,dp,motion,true,"rigid pan remains active with animated meteors");
+    pl_shader drawing=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,drawing,a,b,motion,0.37f));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&drawing,.target=out)));
+    verify_animated_drawing(gpu,dp,out);
+    ajn_camera_reset(camera);
+    for(int i=0;i<6;i++) {
+        pl_tex tex=i%2?b:a;
+        generate(dp,tex,i*0.04f,0,0);
+        CHECK(ajn_camera_frame(camera,i+1,tex));
+        if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
+    }
+    pl_shader held=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,held,a,b,motion,2.0f/3));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&held,.target=out)));
+    verify_unchanged(gpu,dp,a,out);
     // Switching experiments must not carry mature confidence across modes.
     ajn_camera_set_rigid(camera,false);
     CHECK(!ajn_camera_pair(camera,5,6));

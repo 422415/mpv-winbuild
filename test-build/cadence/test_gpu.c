@@ -101,6 +101,29 @@ static void verify_sample(pl_gpu gpu,pl_dispatch dp,pl_tex tex) {
     pl_tex_destroy(gpu,&assertion);
 }
 
+static void verify_protected_sample(pl_gpu gpu,pl_dispatch dp,pl_tex base,pl_tex picture) {
+    pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
+    pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true)); CHECK(assertion);
+    struct pl_shader_desc d[]={read_tex("base",base),read_tex("picture",picture),write_tex(assertion)};
+    pl_shader sh=pl_dispatch_begin(dp);
+    struct pl_custom_shader cs={.description="GPU protected foreground assertion",.compute=true,.compute_group_size={1,1},
+        .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=3,
+        .body="ivec2 s=textureSize(picture,0); float foreground=0.0,background=0.0;"
+              "for(int y=136;y<215;y+=3) for(int x=231;x<330;x+=3) {"
+              "ivec2 p=ivec2(vec2(x,y)/vec2(640,360)*vec2(s));"
+              "foreground=max(foreground,abs(texelFetch(picture,p,0).r-texelFetch(base,p,0).r)); }"
+              "for(int i=0;i<16;i++) { ivec2 p=ivec2(vec2(60+i%4*20,45+i/4*15)/vec2(640,360)*vec2(s));"
+              "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-vec2(1.8,0.25)*4.37;"
+              "float expected=0.45+0.18*cos(q.x*0.15)*cos(q.y*0.37)+0.12*sin(q.x*0.07+q.y*0.08)+0.1*sin(q.x*0.43)*cos(q.y*0.24);"
+              "background=max(background,abs(texelFetch(picture,p,0).r-expected)); }"
+              "imageStore(dst,ivec2(0),vec4(foreground<1e-6 && background<0.003 ? 1.0:0.0,foreground,background,0));"};
+    CHECK(pl_shader_custom(sh,&cs));
+    CHECK(pl_dispatch_compute(dp,pl_dispatch_compute_params(.shader=&sh,.dispatch_size={1,1,1})));
+    float result[4]; CHECK(pl_tex_download(gpu,pl_tex_transfer_params(.tex=assertion,.ptr=result)));
+    printf("GPU assertion protected foreground: %s, foreground error %.6f, background error %.6f\n",result[0]>.5?"PASS":"FAIL",result[1],result[2]);
+    CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
+}
+
 // Prime a connected, coherent source history ending with a at offset zero
 // and b at (1.8, .25), so presentation assertions keep their analytic target.
 static pl_tex coherent_pair(struct ajn_camera *camera,pl_dispatch dp,pl_tex a,pl_tex b) {
@@ -174,7 +197,13 @@ int main(int argc,char **argv) {
         CHECK(ajn_camera_frame(camera,i+1,tex));
         if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
     }
-    verify(gpu,dp,motion,false,"independent foreground over a pan");
+    verify(gpu,dp,motion,true,"background pan with a protected foreground");
+    for(int reverse=0;reverse<2;reverse++) {
+        pl_shader sh=pl_dispatch_begin(dp);
+        CHECK(ajn_camera_sample(camera,sh,reverse?b:a,reverse?a:b,motion,reverse?-0.63f:0.37f));
+        CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
+        verify_protected_sample(gpu,dp,reverse?b:a,out);
+    }
     ajn_camera_destroy(&camera);
     pl_tex_destroy(gpu,&a); pl_tex_destroy(gpu,&b); pl_tex_destroy(gpu,&out);
     pl_dispatch_destroy(&dp); pl_vulkan_destroy(&vk); pl_log_destroy(&log);

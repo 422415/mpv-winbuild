@@ -12,8 +12,8 @@ void ajn_camera_reset(struct ajn_camera *camera);
 
 // Cache luma pyramids by rendered-frame identity. No host-visible GPU storage.
 bool ajn_camera_frame(struct ajn_camera *camera, uint64_t signature, pl_tex frame);
-// The returned 1x1 GPU texture contains normalized translation and confidence.
-// It is consumed by shaders only, never mapped/read by the renderer.
+// The returned GPU texture contains normalized translation/confidence at (0,0)
+// and a 16x8 protection mask below it. Only shaders consume it; no host readback.
 pl_tex ajn_camera_pair(struct ajn_camera *camera, uint64_t before, uint64_t after);
 // Append the correction to the existing output shader. fraction is a timestamp
 // offset relative to the selected original frame, in source-frame durations.

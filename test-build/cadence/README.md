@@ -33,18 +33,27 @@ subtitles. Ordinary target subtitles and OSD are composited after the correction
 Turn it off with `camera-cadence=no`. It is disabled by default and is only
 available when mpv is built with this patched libplacebo.
 
-The GPU detector uses three luma pyramid levels, tiled corner selection,
-forward/backward Lucas–Kanade tracking and a global translation consensus.
-Before translating the image, it checks whether that translation also aligns
-the image content across the frame. Independently animated foreground objects
-and parallax can otherwise be outvoted by background tracks; those pairs keep
-the original pose instead. This check runs on the existing GPU luma textures.
+The GPU detector uses three luma pyramid levels, tiled corner selection and
+forward/backward Lucas–Kanade tracking. It chooses the most-supported translation
+and refines it with three robust alignment steps on the existing GPU luma images.
+Before translating the image, it checks whether the camera estimate aligns the
+actual image content. Small inconsistent regions retain their selected original
+pixels while the rest of the background can receive correction. Large animated
+regions, broad parallax and poor background alignment still reject the pair.
+
+The 16×8 protection mask stays in the cached GPU motion texture. Three source
+pairs of protection cover briefly held drawings. Both the output location and
+translated sampling footprint are checked, so protected objects do not leave
+shifted copies. Correction tapers outside a protected region and its sampling
+margin; it resamples one pose rather than blending drawings at a mask boundary.
+These are coarse motion-consistency regions, not semantic object segmentation.
+They may include nearby background; boundary quality needs visual evaluation.
 Correction also requires three consecutive accepted source-frame pairs. Any
 rejected pair resets that GPU confidence history; repeated display samples of
 one pair do not advance it. This prevents isolated valid pairs inside complex
 animation from causing short bursts of correction. A clean pan starts correcting
 after the initial two-pair warm-up, without adding playback buffering.
-Uncertain motion and cuts retain the selected original pose. Confident pans use
+Uncertain motion and cuts retain the selected original pose. Confident backgrounds use
 Lanczos4 translation, with a neighboring original frame supplying exposed edges.
 This is a perceptual experiment, not bit-exact/lossless output or a general motion
 interpolator. Complex motion can remain juddery; false pan decisions and boundary

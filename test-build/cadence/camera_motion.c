@@ -140,7 +140,7 @@ pl_tex ajn_camera_pair(struct ajn_camera *c,uint64_t before,uint64_t after)
     if (!a || !b || a->width!=b->width || a->height!=b->height) return NULL;
     if (b->paired && b->before==before) return b->motion;
     if (!ensure_tex(c,&c->points,128,1,4) || !ensure_tex(c,&c->forward,128,1,4) ||
-        !ensure_tex(c,&c->backward,128,1,4) || !ensure_tex(c,&b->motion,1,1,4)) return NULL;
+        !ensure_tex(c,&c->backward,128,1,4) || !ensure_tex(c,&b->motion,16,9,4)) return NULL;
     struct pl_shader_desc features[]={sampled("src",a->pyramid[0]),output(c->points)};
     if (!run(c,"camera motion: features",cm_features_glsl,"run_features();",features,2,NULL,0,64,1,128,1,64*16))
         return NULL;
@@ -163,7 +163,7 @@ pl_tex ajn_camera_pair(struct ajn_camera *c,uint64_t before,uint64_t after)
                                     // pair; the uniform prevents reading it.
                                     sampled("history",a->paired?a->motion:a->pyramid[1])};
     struct pl_shader_var history={.var=pl_var_int("history_valid"),.data=&history_valid};
-    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,7,&history,1,128,1,1,1,128*16+40))
+    if (!run(c,"camera motion: consensus",cm_consensus_glsl,"run_consensus();",reduce,7,&history,1,128,1,1,1,128*32+40))
         return NULL;
     b->before=before;
     b->paired=true;

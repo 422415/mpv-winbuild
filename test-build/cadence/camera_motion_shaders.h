@@ -418,7 +418,7 @@ static const char cm_consensus_glsl[] =
 "        // It still needs low absolute error, majority image-area coverage and both\n"
 "        // neighboring strict pairs before presentation may use it.\n"
 "        bool redraw_ok=redraw_geometry && count>0.0 && error<=0.01 &&\n"
-"                       count>=0.5*totals[0].w && stationary_tiles==0u &&\n"
+"                       count>=0.5*totals[0].w &&\n"
 "                       (length(candidate)<0.5 || error<original_error);\n"
 "        imageStore(dst,ivec2(1,0),vec4(candidate/vec2(640,360),redraw_ok?1.0:0.0,0));\n"
 "        // A thin line may cross many tiles while occupying little image area.\n"

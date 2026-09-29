@@ -228,7 +228,7 @@ void run_consensus() {
         // It still needs low absolute error, majority image-area coverage and both
         // neighboring strict pairs before presentation may use it.
         bool redraw_ok=redraw_geometry && count>0.0 && error<=0.01 &&
-                       count>=0.5*totals[0].w && stationary_tiles==0u &&
+                       count>=0.5*totals[0].w &&
                        (length(candidate)<0.5 || error<original_error);
         imageStore(dst,ivec2(1,0),vec4(candidate/vec2(640,360),redraw_ok?1.0:0.0,0));
         // A thin line may cross many tiles while occupying little image area.

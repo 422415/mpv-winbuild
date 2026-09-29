@@ -1,6 +1,7 @@
 shared vec4 tracks[128],totals[128];
 shared uint valid_count,inlier_count,coverage;
 shared vec2 candidate;
+shared vec2 exposure;
 shared uint rejected_tiles,stationary_tiles;
 void run_consensus() {
     uint lane=gl_LocalInvocationID.x;
@@ -54,17 +55,57 @@ void run_consensus() {
     // adjacent pairs before using it. Strict pair acceptance stays unchanged.
     // A redrawn character can account for most surviving feature tracks even
     // when the background spans the image. A track-count majority therefore
-    // is not a reliable image-area test. Keep the spatial coverage requirement;
-    // the dense fit below must cover half the image, and presentation must
+    // is not a reliable image-area test. A provisional redraw may use fewer
+    // tracks across four regions; strict acceptance still needs eight regions.
+    // The dense fit below must cover half the image, and presentation must
     // independently confirm this candidate from both strict neighboring pairs.
-    bool redraw_geometry=rigid_pan!=0 && geometry_ok && inlier_count>=24u;
+    bool redraw_geometry=rigid_pan!=0 && valid_count>=24u &&
+                         inlier_count>=12u && bitCount(coverage)>=4;
     bool ok=strict_geometry || redraw_geometry;
     if(lane==0u) {
         candidate=ok ? totals[0].xy/float(inlier_count):vec2(0);
+        exposure=vec2(1,0);
         rejected_tiles=0u;
         stationary_tiles=0u;
     }
     barrier();
+    // A fade changes brightness without changing the camera. Fit one global
+    // gain/offset for classification only; presentation keeps the original RGB.
+    // This does not explain away local redraws or independently moving layers.
+    if(ok && rigid_pan!=0) {
+        ivec2 tile=ivec2(int(lane)%16,int(lane)/16);
+        vec4 moments=vec4(0);
+        vec2 products=vec2(0);
+        for(int y=2;y<45;y+=4) for(int x=2;x<40;x+=4) {
+            vec2 p=vec2(tile*ivec2(40,45)+ivec2(x,y))+0.5;
+            vec2 q=p+candidate;
+            if(any(lessThan(q,vec2(4))) || any(greaterThan(q,vec2(636,356)))) continue;
+            float a=textureLod(luma_before,p/vec2(640,360),0.0).r;
+            float b=textureLod(luma_after,q/vec2(640,360),0.0).r;
+            moments+=vec4(a,b,b*b,1);
+            products+=vec2(a*b,a*a);
+        }
+        totals[lane]=moments; tracks[lane].xy=products;
+        barrier();
+        for(uint step=64u;step>0u;step/=2u) {
+            if(lane<step) { totals[lane]+=totals[lane+step]; tracks[lane].xy+=tracks[lane+step].xy; }
+            barrier();
+        }
+        if(lane==0u) {
+            vec4 m=totals[0]/max(totals[0].w,1.0);
+            vec2 products=tracks[0].xy/max(totals[0].w,1.0);
+            float variance=m.z-m.y*m.y;
+            float covariance=products.x-m.x*m.y;
+            // A global exposure model needs almost perfect image correlation.
+            // A redrawn character must not change the fit of its background.
+            if(variance>0.0001 && covariance>0.0 &&
+               covariance*covariance>0.98*0.98*variance*(products.y-m.x*m.x)) {
+                float gain=clamp(covariance/variance,0.75,1.333333);
+                exposure=vec2(gain,clamp(m.x-gain*m.y,-0.08,0.08));
+            }
+        }
+        barrier();
+    }
     // Sparse tracks establish the camera model, but averaging their subpixel
     // errors can misalign sharp backgrounds. Refine that model against luma,
     // with bounded robust updates so independently animated pixels do not
@@ -83,7 +124,7 @@ void run_consensus() {
             vec2 gradient=0.5*vec2(
                 textureLod(luma_before,uv+vec2(step.x,0),0.0).r-textureLod(luma_before,uv-vec2(step.x,0),0.0).r,
                 textureLod(luma_before,uv+vec2(0,step.y),0.0).r-textureLod(luma_before,uv-vec2(0,step.y),0.0).r);
-            float difference=textureLod(luma_after,q/vec2(640,360),0.0).r-reference;
+            float difference=exposure.x*textureLod(luma_after,q/vec2(640,360),0.0).r+exposure.y-reference;
             // Large edge residuals can come from thin, resampled lines. Their
             // gradients must not pull the camera away from the aligned image.
             float residual=difference/0.02;
@@ -126,9 +167,9 @@ void run_consensus() {
             if(any(lessThan(p,vec2(4))) || any(greaterThan(p,vec2(636,356))) ||
                any(lessThan(q,vec2(4))) || any(greaterThan(q,vec2(636,356)))) continue;
             float a=textureLod(luma_before,p/vec2(640,360),0.0).r;
-            float b=textureLod(luma_after,q/vec2(640,360),0.0).r;
+            float b=exposure.x*textureLod(luma_after,q/vec2(640,360),0.0).r+exposure.y;
             if(abs(a-b)>0.04) bad++;
-            errors+=vec3(abs(a-b),abs(a-textureLod(luma_after,p/vec2(640,360),0.0).r),1);
+            errors+=vec3(abs(a-b),abs(a-(exposure.x*textureLod(luma_after,p/vec2(640,360),0.0).r+exposure.y)),1);
             count++;
         }
         protect=count>0u && float(bad)>0.12*float(count);
@@ -180,7 +221,7 @@ void run_consensus() {
         // It still needs low absolute error, majority image-area coverage and both
         // neighboring strict pairs before presentation may use it.
         bool redraw_ok=redraw_geometry && count>0.0 && error<=0.01 &&
-                       count>=0.5*totals[0].w &&
+                       count>=0.5*totals[0].w && stationary_tiles==0u &&
                        (length(candidate)<0.5 || error<original_error);
         imageStore(dst,ivec2(1,0),vec4(candidate/vec2(640,360),redraw_ok?1.0:0.0,0));
         // A thin line may cross many tiles while occupying little image area.

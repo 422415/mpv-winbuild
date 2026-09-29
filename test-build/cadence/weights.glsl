@@ -17,15 +17,27 @@ vec4 confirm_redraw(vec4 flow,vec4 candidate,vec4 before,vec4 after) {
     vec2 expected=(before.xy+after.xy)*0.5;
     // Neighbors are two source intervals apart. A fixed subpixel bound would
     // reject a fast pan easing to a stop despite a small relative speed change.
-    // Keep that noise floor, allowing at most 10% of the slower verified motion.
+    // Keep that noise floor. Source camera steps can vary by a quarter of the
+    // slower verified motion while the background still fits the same pan.
     float speed=min(length(before.xy*vec2(640,360)),length(after.xy*vec2(640,360)));
-    float tolerance=max(0.6,0.1*speed);
+    float tolerance=max(0.6,0.25*speed);
     if(0.5*length((before.xy-after.xy)*vec2(640,360))>=tolerance ||
        length((candidate.xy-expected)*vec2(640,360))>=tolerance)
         return flow;
     // Only an isolated redraw between two independently verified pan pairs.
     // A cut or a continuing stationary foreground cannot bridge this check.
-    return vec4(expected,0,1);
+    return vec4(candidate.xy,0,1);
+}
+vec2 camera_knot(vec4 before,vec4 after) {
+    if(before.w<0.5 || after.w<0.5) return vec2(0);
+    vec2 a=before.xy*vec2(640,360),b=after.xy*vec2(640,360);
+    float speed=min(length(a),length(b));
+    if(speed<0.5 || length(a-b)>0.5*speed) return vec2(0);
+    // Smooth camera positions with [1,2,1]/4, not image pixels or animation.
+    // The same knot is used on both sides of an original-frame boundary.
+    // This removes source camera step jitter without guessing a different
+    // velocity for just the redraw interval and snapping at its end.
+    return (after.xy-before.xy)*0.25;
 }
 void run_weights() {
     vec4 flow=texelFetch(motion,ivec2(0),0);
@@ -48,7 +60,7 @@ void run_weights() {
         confirmed=confirmed || (flow.w>0.5 &&
                     ((a.w>0.5 && b.w>0.5) || (b.w>0.5 && d.w>0.5) ||
                      (d.w>0.5 && e.w>0.5)));
-        vec2 first=vec2(0),last=vec2(0);
+        vec2 first=camera_knot(b,flow),last=camera_knot(flow,d);
         // Redistribute one held camera interval over its two moving neighbors.
         // Both ends of the three-interval span stay fixed. Longer camera stops
         // and direction changes are left alone; source drawings are never mixed.

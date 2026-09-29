@@ -54,19 +54,30 @@ add a GPU readback or an extra image-processing pass.
 
 An isolated character redraw can fail the strict pair classifier even while
 the background continues the camera pan. A separate GPU candidate retains
-that background fit when at least 24 tracks agree across at least eight
+that background fit when at least 12 tracks agree across at least four
 image regions, and a majority of sampled pixels have low alignment error.
 A numerical majority of sparse tracks is not required: redrawn character
 detail can supply most tracked points without occupying most of the image.
 Presentation can use it only between two strictly accepted pairs, with bounded
 per-frame motion change and a matching intermediate estimate. It samples the
-selected original drawing at the neighboring camera trajectory. Cuts,
+selected original drawing using that measured translation. Cuts,
 consecutive rejected pairs and persistent stationary foregrounds cannot use
 this path. Provisional redraw candidates do not advance pair confidence. The existing five-pair window
 provides the lookahead; no additional frames, passes or CPU transfers are added.
-The motion-change bound has a 0.6-analysis-pixel floor and scales to 10% of the
+The motion-change bound has a 0.6-analysis-pixel floor and scales to 25% of the
 slower verified neighboring motion, allowing fast pans to ease down without
 losing an otherwise confirmed isolated pair.
+
+Brightness fades are accounted for when the aligned images have at least 0.98
+correlation. A bounded global gain/offset is fitted for motion validation only;
+it never changes the displayed colors. Mixed images in a dissolve can still
+fail the one-camera model and remain at the original cadence.
+
+Similar adjacent moving intervals share a smoothed camera-position knot using
+the three-tap [1,2,1]/4 filter. This reduces uneven source camera steps and keeps
+the position continuous when the selected original drawing changes. Still
+intervals, reversals and large motion disagreements do not use this filter.
+The separate isolated-hold correction continues to preserve longer stops.
 
 Use `video-sync=display-resample`, `interpolation=no`, `blend-subtitles=no`,
 Vulkan/NVDEC, and a supported multiple such as nominal 72 Hz for 23.976 fps.

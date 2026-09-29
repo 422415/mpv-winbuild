@@ -56,6 +56,7 @@ static void generate(pl_dispatch dp,pl_tex tex,float dx,float dy,int cut) {
         "if(cut==5 && all(greaterThan(q,vec2(175,75))) && all(lessThan(q,vec2(455,285)))) {"
         " float pose=offset.x>=7.0?1.0:0.0;"
         " c=0.4+0.25*cos(q.x*0.41+pose*2.0)*sin(q.y*0.33+pose); }"
+        "if(cut==6) c*=0.6+offset.x*0.035;"
         "imageStore(dst,p,vec4(c,c,c,1)); }";
     pl_shader sh=pl_dispatch_begin(dp);
     float offset[2]={dx,dy};
@@ -304,6 +305,14 @@ int main(int argc,char **argv) {
     ajn_camera_reset(camera);
     for(int i=0;i<6;i++) {
         pl_tex tex=i%2?b:a;
+        generate(dp,tex,i*1.8f,i*0.25f,6);
+        CHECK(ajn_camera_frame(camera,i+1,tex));
+        if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
+    }
+    verify(gpu,dp,motion,true,"rigid camera pan during brightness fade");
+    ajn_camera_reset(camera);
+    for(int i=0;i<6;i++) {
+        pl_tex tex=i%2?b:a;
         generate(dp,tex,i*1.8f,i*0.25f,2);
         CHECK(ajn_camera_frame(camera,i+1,tex));
         if(i) { motion=ajn_camera_pair(camera,i,i+1); CHECK(motion); }
@@ -341,7 +350,24 @@ int main(int argc,char **argv) {
     pl_shader slowing=pl_dispatch_begin(dp);
     CHECK(ajn_camera_sample(camera,slowing,a,b,redraw_pairs[3],0.5f));
     CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&slowing,.target=out)));
-    verify_redraw_sample(gpu,dp,out,5.8f,0.725f);
+    verify_redraw_sample(gpu,dp,out,5.6f,0.7f);
+    // Uneven source camera steps use one continuous position curve regardless
+    // of which neighboring original drawing the renderer selects.
+    ajn_camera_reset(camera);
+    const float uneven_positions[]={0,1,2.1f,3,4.1f,5.1f,6.1f};
+    for(int i=0;i<7;i++) {
+        generate(dp,a,uneven_positions[i]*1.8f,uneven_positions[i]*0.25f,0);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) { redraw_pairs[i-1]=ajn_camera_pair(camera,i,i+1); CHECK(redraw_pairs[i-1]); }
+    }
+    generate(dp,a,3*1.8f,3*0.25f,0);
+    generate(dp,b,4.1f*1.8f,4.1f*0.25f,0);
+    for(int after=0;after<2;after++) {
+        pl_shader sh=pl_dispatch_begin(dp);
+        CHECK(ajn_camera_sample(camera,sh,after?b:a,after?a:b,redraw_pairs[3],after?-0.5f:0.5f));
+        CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&sh,.target=out)));
+        verify_sample(gpu,dp,out,3.5625f);
+    }
     // A stationary foreground arriving during an established pan is not a
     // redraw: subsequent pairs disagree too, so lookahead must keep it still.
     ajn_camera_reset(camera);

@@ -3,6 +3,7 @@
 #include "camera_motion_shaders.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #define SLOTS 8
 struct frame_slot {
@@ -19,6 +20,8 @@ struct ajn_camera {
     bool rigid;
     struct frame_slot slots[SLOTS];
     pl_tex points, forward, backward, weights;
+    FILE *trace;
+    uint64_t traced;
 };
 
 static bool ensure_tex(struct ajn_camera *c, pl_tex *tex, int w, int h, int components)
@@ -28,7 +31,8 @@ static bool ensure_tex(struct ajn_camera *c, pl_tex *tex, int w, int h, int comp
                          PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_STORABLE|PL_FMT_CAP_LINEAR);
     if (!fmt) return false;
     *tex=pl_tex_create(c->gpu,pl_tex_params(.w=w,.h=h,.format=fmt,
-                                           .sampleable=true,.storable=true));
+                                           .sampleable=true,.storable=true,
+                                           .host_readable=c->trace && components==4));
     return *tex!=NULL;
 }
 
@@ -71,6 +75,8 @@ struct ajn_camera *ajn_camera_create(pl_gpu gpu,pl_dispatch dispatch)
     if (!c) return NULL;
     c->gpu=gpu;
     c->dispatch=dispatch;
+    const char *path=getenv("AJN_CAMERA_TRACE_FILE");
+    if (path) c->trace=fopen(path,"w");
     return c;
 }
 
@@ -86,6 +92,7 @@ void ajn_camera_destroy(struct ajn_camera **pc)
     pl_tex_destroy(c->gpu,&c->forward);
     pl_tex_destroy(c->gpu,&c->backward);
     pl_tex_destroy(c->gpu,&c->weights);
+    if (c->trace) fclose(c->trace);
     free(c);
     *pc=NULL;
 }
@@ -234,6 +241,27 @@ bool ajn_camera_sample(struct ajn_camera *c,pl_shader sh,pl_tex base,pl_tex neig
         {.var=pl_var_int("rigid_pan"),.data=&rigid},
         {.var=pl_var_int("available"),.data=&available}};
     if (!run(c,"camera motion: sampling weights",header,"run_weights();",d,nd,v,4,1,1,1,1,0)) return false;
+    // Diagnostic branch only: synchronous readback must not ship in playback.
+    if (c->trace && pair && c->traced!=pair->signature && fraction>0.25f) {
+        c->traced=pair->signature;
+        float weights[40];
+        if (!pl_tex_download(c->gpu,pl_tex_transfer_params(.tex=c->weights,.ptr=weights))) return false;
+        fprintf(c->trace,"{\"signature\":%llu,\"before\":%llu,\"available\":%d,\"fraction\":%.9g,\"size\":[%.0f,%.0f],\"weights\":[%.9g,%.9g,%.9g],\"pairs\":[",
+                (unsigned long long)pair->signature,(unsigned long long)pair->before,available,fraction,
+                size[0],size[1],weights[0],weights[1],weights[2]);
+        struct frame_slot *ordered[]={nearby[0],nearby[1],pair,nearby[2],nearby[3]};
+        for (int i=0;i<5;i++) {
+            if(i) fputc(',',c->trace);
+            struct frame_slot *f=ordered[i];
+            if (!f || !f->paired) { fputs("null",c->trace); continue; }
+            float values[16*9*4];
+            if (!pl_tex_download(c->gpu,pl_tex_transfer_params(.tex=f->motion,.ptr=values))) return false;
+            fprintf(c->trace,"{\"id\":%llu,\"data\":[",(unsigned long long)f->signature);
+            for(int j=0;j<32;j++) fprintf(c->trace,"%s%.9g",j?",":"",values[j]);
+            fputs("]}",c->trace);
+        }
+        fputs("]}\n",c->trace);fflush(c->trace);
+    }
     float coords[4][2]={{0,0},{1,0},{0,1},{1,1}};
     struct pl_shader_va position={.attr={.name="pos",.fmt=pl_find_vertex_fmt(c->gpu,PL_FMT_FLOAT,2)},
                                   .data={coords[0],coords[1],coords[2],coords[3]}};

@@ -246,6 +246,8 @@ static const char cm_consensus_glsl[] =
 "                         inlier_count*2u>valid_count;\n"
 "    bool ok=strict_geometry || redraw_geometry;\n"
 "    if(lane==0u) {\n"
+"        imageStore(dst,ivec2(4,0),vec4(valid_count,inlier_count,bitCount(coverage),ok?1:0));\n"
+"        imageStore(dst,ivec2(5,0),vec4(totals[0].z/max(totals[0].w,1e-6),center,redraw_geometry?1:0));\n"
 "        candidate=ok ? totals[0].xy/float(inlier_count):vec2(0);\n"
 "        rejected_tiles=0u;\n"
 "        stationary_tiles=0u;\n"
@@ -371,6 +373,8 @@ static const char cm_consensus_glsl[] =
 "        bool apply=streak>=3.0;\n"
 "        vec2 motion=ok ? candidate/vec2(640,360):vec2(0);\n"
 "        imageStore(dst,ivec2(0),vec4(motion,apply ? 1.0:0.0,streak));\n"
+"        imageStore(dst,ivec2(6,0),vec4(error,original_error,rejected_tiles,stationary_tiles));\n"
+"        imageStore(dst,ivec2(7,0),vec4(candidate,count/max(totals[0].w,1.0),redraw_ok?1:0));\n"
 "    }\n"
 "}\n";
 static const char cm_weights_glsl[] =

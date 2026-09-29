@@ -55,6 +55,13 @@ void run_weights() {
         }
         if(isolated_hold(flow,d,e)) last=(d.xy+e.xy-2.0*flow.xy)/3.0;
         correction=mix(first,last,fraction<0.0 ? 1.0+fraction:fraction);
+        // Still pairs also have valid geometry. They cannot establish a pan
+        // around one isolated drawing movement; require another moving pair.
+        // A single held interval inside a pan remains supported from either end.
+        bool nearby_motion=(b.w>0.5 && length(b.xy*vec2(640,360))>=0.1) ||
+                           (d.w>0.5 && length(d.xy*vec2(640,360))>=0.1) ||
+                           isolated_hold(a,b,flow) || isolated_hold(flow,d,e);
+        confirmed=confirmed && nearby_motion;
     }
     vec2 displacement=flow.xy*image_size*fraction;
     displacement+=correction*image_size;

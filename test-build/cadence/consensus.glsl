@@ -84,7 +84,11 @@ void run_consensus() {
                 textureLod(luma_before,uv+vec2(step.x,0),0.0).r-textureLod(luma_before,uv-vec2(step.x,0),0.0).r,
                 textureLod(luma_before,uv+vec2(0,step.y),0.0).r-textureLod(luma_before,uv-vec2(0,step.y),0.0).r);
             float difference=textureLod(luma_after,q/vec2(640,360),0.0).r-reference;
-            float weight=min(1.0,0.02/max(abs(difference),1e-6));
+            // Large edge residuals can come from thin, resampled lines. Their
+            // gradients must not pull the camera away from the aligned image.
+            float residual=difference/0.02;
+            float taper=max(0.0,1.0-residual*residual);
+            float weight=rigid_pan!=0 ? taper*taper : min(1.0,0.02/max(abs(difference),1e-6));
             h+=weight*vec4(gradient.x*gradient.x,gradient.x*gradient.y,gradient.y*gradient.y,gradient.x*difference);
             ry+=weight*gradient.y*difference;
         }
@@ -107,8 +111,9 @@ void run_consensus() {
     ivec2 tile=ivec2(int(lane)%16,int(lane)/16);
     bool protect=false;
     vec3 errors=vec3(0);
+    uint bad=0u;
     if(ok) {
-        uint bad=0u,count=0u;
+        uint count=0u;
         for(int y=1;y<45;y+=2) for(int x=1;x<40;x+=2) {
             vec2 p=vec2(tile*ivec2(40,45)+ivec2(x,y))+0.5;
             // Give both images equivalent bilinear filtering. Sampling one at
@@ -133,12 +138,18 @@ void run_consensus() {
         // A region that fits substantially better with NO translation is
         // different: moving it would introduce a wobble into a stationary
         // foreground. Keep rejecting that case for the whole-frame mode.
-        if(protect && errors.y<0.5*errors.x) atomicAdd(stationary_tiles,1u);
+        // A zero-flow feature alone can be a repeating cable intersection.
+        // Require the surrounding region to fit the stationary image as well
+        // as we require the background to fit its moving image.
+        if(protect && valid && length(f.xy)<0.3 &&
+           errors.y<=0.01*errors.z && errors.y<0.5*errors.x)
+            atomicAdd(stationary_tiles,1u);
     }
     totals[lane]=vec4(protect ? vec3(0):errors,errors.z);
+    tracks[lane].x=float(bad);
     barrier();
     for(uint step=64u;step>0u;step/=2u) {
-        if(lane<step) totals[lane]+=totals[lane+step];
+        if(lane<step) { totals[lane]+=totals[lane+step]; tracks[lane].x+=tracks[lane+step].x; }
         barrier();
     }
     // Three source pairs of protection cover held drawings. Carry protection
@@ -172,7 +183,17 @@ void run_consensus() {
                        count>=0.5*totals[0].w &&
                        (length(candidate)<0.5 || error<original_error);
         imageStore(dst,ivec2(1,0),vec4(candidate/vec2(640,360),redraw_ok?1.0:0.0,0));
-        ok=strict_geometry && background_ok && rejected_tiles<=12u;
+        // A thin line may cross many tiles while occupying little image area.
+        // Count disagreeing pixels, not every tile touched by that line.
+        bool mismatch_ok=rigid_pan!=0 ? tracks[0].x<=(12.0/128.0)*totals[0].w
+                                     : rejected_tiles<=12u;
+        // Sharp cable corners can outweigh a majority of coherent soft
+        // background tracks. Accept that majority only when the dense fit
+        // covers most of the image and improves its error at least threefold.
+        bool broad_consensus=rigid_pan!=0 && geometry_ok && inlier_count>=24u &&
+                             inlier_count*2u>valid_count && length(candidate)>=0.5 &&
+                             count>=0.5*totals[0].w && 3.0*error<=original_error;
+        ok=(strict_geometry || broad_consensus) && background_ok && mismatch_ok;
         // Limited animation no longer repeatedly disables an otherwise
         // verified camera pan. The existing background fit and coverage
         // requirements still reject large motion disagreements and cuts.

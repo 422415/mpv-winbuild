@@ -336,6 +336,19 @@ int main(int argc,char **argv) {
     CHECK(ajn_camera_sample(camera,foreground,a,b,redraw_pairs[3],0.5f));
     CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&foreground,.target=out)));
     verify_unchanged(gpu,dp,a,out);
+    // Held pairs are geometrically valid, but one isolated drawing movement
+    // between them is not an established camera pan.
+    ajn_camera_reset(camera);
+    for(int i=0;i<7;i++) {
+        generate(dp,a,i<4?0.0f:1.8f,i<4?0.0f:0.25f,0);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) { redraw_pairs[i-1]=ajn_camera_pair(camera,i,i+1); CHECK(redraw_pairs[i-1]); }
+    }
+    generate(dp,a,0,0,0); generate(dp,b,1.8f,0.25f,0);
+    pl_shader isolated=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,isolated,a,b,redraw_pairs[3],0.5f));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&isolated,.target=out)));
+    verify_unchanged(gpu,dp,a,out);
     ajn_camera_reset(camera);
     for(int i=0;i<6;i++) {
         pl_tex tex=i%2?b:a;

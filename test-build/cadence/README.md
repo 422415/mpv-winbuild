@@ -13,8 +13,8 @@ GPU tracking consensus, a verified background fit, and three connected source
 pairs. Queued frames confirm the start before presentation, avoiding the former
 two-pair visible warm-up. Small animated regions retain their original drawings while sharing
 the camera translation; their presence does not repeatedly disable a good pan.
-A changed region that fits substantially better without camera translation
-rejects the whole pair, protecting stationary foregrounds. Large inconsistent
+A changed region with a consistent stationary feature and a low-error fit
+without camera translation rejects the whole pair, protecting stationary foregrounds. Large inconsistent
 regions and cuts also reject it. Motions below 0.1 of an analysis pixel per
 source frame in held shots leave the original pixels untouched, avoiding tracking-noise
 wobbles in held shots. Presentation applies a uniform translation, without a regional
@@ -25,9 +25,18 @@ classification or reconstruct zoom, parallax, or arbitrary animation layers.
 Rigid-pan consensus weights each corner by the square root of its strength,
 capped at a strength of 0.01. This prevents weak grain in smooth shading from
 vetoing a pan supported by clear edges, while limiting the influence of a few
-sharp features. At least 24 agreeing tracks, 82% of valid tracking weight,
-and eight covered image regions are still required, followed by the existing
-dense image checks. The older cadence mode retains its unweighted voting.
+sharp features. At least 24 agreeing tracks and eight covered image regions
+are required. Either 82% of valid tracking weight agrees, or a numerical
+majority agrees and the dense fit covers at least half the image with at least
+a threefold error improvement. This second path prevents sharp cable detail
+from outvoting coherent soft backgrounds. Large residuals cannot pull the
+rigid-pan refinement away from aligned pixels; disagreement is limited by
+sampled pixel area rather than the number of tiles crossed by thin lines.
+The older cadence mode retains its existing voting and refinement.
+
+Still pairs do not establish a pan around one isolated drawing movement.
+Presentation requires another moving pair, allowing one held interval inside
+an otherwise verified pan. This preserves the isolated-hold correction below.
 
 With `camera-pan-half-rate=yes`, camera positions are held for two refreshes
 (36 fps on a 72 Hz display). Source drawings still change on their own timeline,
@@ -53,7 +62,7 @@ Presentation can use it only between two strictly accepted pairs, with bounded
 per-frame motion change and a matching intermediate estimate. It samples the
 selected original drawing at the neighboring camera trajectory. Cuts,
 consecutive rejected pairs and persistent stationary foregrounds cannot use
-this path. Strict pair confidence is unchanged. The existing five-pair window
+this path. Provisional redraw candidates do not advance pair confidence. The existing five-pair window
 provides the lookahead; no additional frames, passes or CPU transfers are added.
 
 Use `video-sync=display-resample`, `interpolation=no`, `blend-subtitles=no`,

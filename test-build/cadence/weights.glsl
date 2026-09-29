@@ -15,9 +15,13 @@ vec4 confirm_redraw(vec4 flow,vec4 candidate,vec4 before,vec4 after) {
     if(flow.w>0.5 || candidate.z<0.5 || before.w<0.5 || after.w<0.5)
         return flow;
     vec2 expected=(before.xy+after.xy)*0.5;
-    // Neighbors are two source intervals apart; bound per-interval change.
-    if(0.5*length((before.xy-after.xy)*vec2(640,360))>=0.6 ||
-       length((candidate.xy-expected)*vec2(640,360))>=0.6)
+    // Neighbors are two source intervals apart. A fixed subpixel bound would
+    // reject a fast pan easing to a stop despite a small relative speed change.
+    // Keep that noise floor, allowing at most 10% of the slower verified motion.
+    float speed=min(length(before.xy*vec2(640,360)),length(after.xy*vec2(640,360)));
+    float tolerance=max(0.6,0.1*speed);
+    if(0.5*length((before.xy-after.xy)*vec2(640,360))>=tolerance ||
+       length((candidate.xy-expected)*vec2(640,360))>=tolerance)
         return flow;
     // Only an isolated redraw between two independently verified pan pairs.
     // A cut or a continuing stationary foreground cannot bridge this check.

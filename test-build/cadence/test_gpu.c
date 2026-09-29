@@ -183,17 +183,20 @@ static void verify_unchanged(pl_gpu gpu,pl_dispatch dp,pl_tex base,pl_tex pictur
     CHECK(result[0]>.5); pl_tex_destroy(gpu,&assertion);
 }
 
-static void verify_redraw_sample(pl_gpu gpu,pl_dispatch dp,pl_tex picture) {
+static void verify_redraw_sample(pl_gpu gpu,pl_dispatch dp,pl_tex picture,float dx,float dy) {
     pl_fmt fmt=pl_find_fmt(gpu,PL_FMT_FLOAT,4,32,32,PL_FMT_CAP_STORABLE|PL_FMT_CAP_HOST_READABLE);
     pl_tex assertion=pl_tex_create(gpu,pl_tex_params(.w=1,.h=1,.format=fmt,.storable=true,.host_readable=true)); CHECK(assertion);
     struct pl_shader_desc d[]={read_tex("picture",picture),write_tex(assertion)};
+    float offset[2]={dx,dy};
+    struct pl_shader_var v={.var=pl_var_vec2("camera_offset"),.data=offset};
     pl_shader sh=pl_dispatch_begin(dp);
     struct pl_custom_shader cs={.description="GPU redraw continuity assertion",.compute=true,.compute_group_size={1,1},
         .input=PL_SHADER_SIG_NONE,.output=PL_SHADER_SIG_NONE,.descriptors=d,.num_descriptors=2,
+        .variables=&v,.num_variables=1,
         .body="ivec2 s=textureSize(picture,0); float error=0.0;"
               "for(int y=0;y<8;y++) for(int x=0;x<8;x++) {"
               "ivec2 p=ivec2(vec2(45+x*72,40+y*40)/vec2(640,360)*vec2(s));"
-              "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-vec2(1.8,0.25)*3.5;"
+              "vec2 q=(vec2(p)+0.5)/vec2(s)*vec2(640,360)-camera_offset;"
               "float c=0.45+0.18*cos(q.x*0.15)*cos(q.y*0.37)+0.12*sin(q.x*0.07+q.y*0.08)+0.1*sin(q.x*0.43)*cos(q.y*0.24);"
               "if(all(greaterThan(q,vec2(175,75))) && all(lessThan(q,vec2(455,285))))"
               " c=0.4+0.25*cos(q.x*0.41)*sin(q.y*0.33);"
@@ -322,7 +325,23 @@ int main(int argc,char **argv) {
     pl_shader redraw=pl_dispatch_begin(dp);
     CHECK(ajn_camera_sample(camera,redraw,a,b,redraw_pairs[3],0.5f));
     CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&redraw,.target=out)));
-    verify_redraw_sample(gpu,dp,out);
+    verify_redraw_sample(gpu,dp,out,6.3f,0.875f);
+    // The same isolated redraw during a fast, steadily decelerating pan.
+    // Neighbor velocities differ by 0.8 pixels per interval: above the old
+    // fixed 0.6-pixel limit, but only about 6% of the verified camera speed.
+    ajn_camera_reset(camera);
+    const float slowing_offsets[]={-46.6f,-30.6f,-15.4f,-1.0f,12.6f,25.4f,37.4f};
+    for(int i=0;i<7;i++) {
+        generate(dp,a,slowing_offsets[i],slowing_offsets[i]*0.125f,5);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) { redraw_pairs[i-1]=ajn_camera_pair(camera,i,i+1); CHECK(redraw_pairs[i-1]); }
+    }
+    verify(gpu,dp,redraw_pairs[3],false,"decelerating pan redraw remains strictly rejected");
+    generate(dp,a,-1.0f,-0.125f,5); generate(dp,b,12.6f,1.575f,5);
+    pl_shader slowing=pl_dispatch_begin(dp);
+    CHECK(ajn_camera_sample(camera,slowing,a,b,redraw_pairs[3],0.5f));
+    CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&slowing,.target=out)));
+    verify_redraw_sample(gpu,dp,out,5.8f,0.725f);
     // A stationary foreground arriving during an established pan is not a
     // redraw: subsequent pairs disagree too, so lookahead must keep it still.
     ajn_camera_reset(camera);

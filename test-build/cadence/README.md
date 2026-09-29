@@ -64,6 +64,9 @@ selected original drawing at the neighboring camera trajectory. Cuts,
 consecutive rejected pairs and persistent stationary foregrounds cannot use
 this path. Provisional redraw candidates do not advance pair confidence. The existing five-pair window
 provides the lookahead; no additional frames, passes or CPU transfers are added.
+The motion-change bound has a 0.6-analysis-pixel floor and scales to 10% of the
+slower verified neighboring motion, allowing fast pans to ease down without
+losing an otherwise confirmed isolated pair.
 
 Use `video-sync=display-resample`, `interpolation=no`, `blend-subtitles=no`,
 Vulkan/NVDEC, and a supported multiple such as nominal 72 Hz for 23.976 fps.

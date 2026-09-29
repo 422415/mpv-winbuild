@@ -101,7 +101,14 @@ void run_consensus() {
             if(variance>0.0001 && covariance>0.0 &&
                covariance*covariance>0.98*0.98*variance*(products.y-m.x*m.x)) {
                 float gain=clamp(covariance/variance,0.75,1.333333);
-                exposure=vec2(gain,clamp(m.x-gain*m.y,-0.08,0.08));
+                float offset=clamp(m.x-gain*m.y,-0.08,0.08);
+                float raw_error=products.y+m.z-2.0*products.x;
+                float fit_error=products.y+gain*gain*m.z+offset*offset-
+                                2.0*gain*products.x-2.0*offset*m.x+2.0*gain*offset*m.y;
+                // Ordinary resampling and a small animated region can bias a
+                // least-squares exposure fit. Use it only when it explains a
+                // substantial global change, not a tiny contrast difference.
+                if(raw_error>=2.0*max(fit_error,1e-8)) exposure=vec2(gain,offset);
             }
         }
         barrier();

@@ -45,8 +45,10 @@ add a GPU readback or an extra image-processing pass.
 
 An isolated character redraw can fail the strict pair classifier even while
 the background continues the camera pan. A separate GPU candidate retains
-that background fit when a majority of tracks agree across at least eight
+that background fit when at least 24 tracks agree across at least eight
 image regions, and a majority of sampled pixels have low alignment error.
+A numerical majority of sparse tracks is not required: redrawn character
+detail can supply most tracked points without occupying most of the image.
 Presentation can use it only between two strictly accepted pairs, with bounded
 per-frame motion change and a matching intermediate estimate. It samples the
 selected original drawing at the neighboring camera trajectory. Cuts,

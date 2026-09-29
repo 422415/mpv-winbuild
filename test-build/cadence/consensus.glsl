@@ -52,8 +52,12 @@ void run_consensus() {
     // Retain a separate background candidate across a large drawing change.
     // It cannot establish confidence here: presentation must confirm both
     // adjacent pairs before using it. Strict pair acceptance stays unchanged.
-    bool redraw_geometry=rigid_pan!=0 && geometry_ok && inlier_count>=24u &&
-                         inlier_count*2u>valid_count;
+    // A redrawn character can account for most surviving feature tracks even
+    // when the background spans the image. A track-count majority therefore
+    // is not a reliable image-area test. Keep the spatial coverage requirement;
+    // the dense fit below must cover half the image, and presentation must
+    // independently confirm this candidate from both strict neighboring pairs.
+    bool redraw_geometry=rigid_pan!=0 && geometry_ok && inlier_count>=24u;
     bool ok=strict_geometry || redraw_geometry;
     if(lane==0u) {
         candidate=ok ? totals[0].xy/float(inlier_count):vec2(0);
@@ -162,7 +166,7 @@ void run_consensus() {
                            (length(candidate)<0.5 || error<=0.5*original_error);
         // Redrawn pixels leave residual error unrelated to camera motion, so
         // this candidate needs an improved fit, not the strict twofold gain.
-        // It still needs low absolute error, majority coverage and both
+        // It still needs low absolute error, majority image-area coverage and both
         // neighboring strict pairs before presentation may use it.
         bool redraw_ok=redraw_geometry && count>0.0 && error<=0.01 &&
                        count>=0.5*totals[0].w &&

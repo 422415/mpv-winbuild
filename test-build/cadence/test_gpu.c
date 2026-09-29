@@ -351,6 +351,38 @@ int main(int argc,char **argv) {
     CHECK(ajn_camera_sample(camera,slowing,a,b,redraw_pairs[3],0.5f));
     CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&slowing,.target=out)));
     verify_redraw_sample(gpu,dp,out,5.6f,0.7f);
+    // Two shot changes surround a briefly coherent pair. Presentation must
+    // preserve the original frames throughout that uncertain block, even
+    // with lookahead and repeated samples, then resume a verified clean pan.
+    ajn_camera_reset(camera);
+    pl_tex transition_pairs[8];
+    for(int i=0;i<12;i++) {
+        generate(dp,a,i*1.8f,i*0.25f,i==4 || i==5 ? 1:0);
+        CHECK(ajn_camera_frame(camera,i+1,a));
+        if(i) {
+            transition_pairs[(i-1)%8]=ajn_camera_pair(camera,i,i+1);
+            CHECK(transition_pairs[(i-1)%8]);
+        }
+        if(i!=5 && i!=7 && i!=9 && i!=10 && i!=11) continue;
+        int current=i-3;
+        generate(dp,a,current*1.8f,current*0.25f,current==4 || current==5 ? 1:0);
+        generate(dp,b,(current+1)*1.8f,(current+1)*0.25f,current+1==4 || current+1==5 ? 1:0);
+        printf("Transition presentation pair %d\n",current);
+        for(int repeat=0;repeat<2;repeat++) {
+            float phase=i==11 && repeat ? 0.0f:0.5f;
+            pl_shader transition=pl_dispatch_begin(dp);
+            CHECK(ajn_camera_sample(camera,transition,a,b,transition_pairs[current%8],phase));
+            CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&transition,.target=out)));
+            if(i==11) verify_sample(gpu,dp,out,current+phase);
+            else verify_unchanged(gpu,dp,a,out);
+        }
+        if(i==9) {
+            pl_shader held_transition=pl_dispatch_begin(dp);
+            CHECK(ajn_camera_sample(camera,held_transition,b,a,transition_pairs[current%8],-0.5f));
+            CHECK(pl_dispatch_finish(dp,pl_dispatch_params(.shader=&held_transition,.target=out)));
+            verify_unchanged(gpu,dp,b,out);
+        }
+    }
     // Uneven source camera steps use one continuous position curve regardless
     // of which neighboring original drawing the renderer selects.
     ajn_camera_reset(camera);

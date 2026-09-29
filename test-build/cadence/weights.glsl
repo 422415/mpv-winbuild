@@ -55,11 +55,25 @@ void run_weights() {
             flow=confirm_redraw(flow,texelFetch(motion,ivec2(1,0),0),previous,next);
         if((available&12)==12)
             d=confirm_redraw(d,texelFetch(next_motion,ivec2(1,0),0),original,e);
+        bool ca=texelFetch(motion,ivec2(2,0),0).z>0.5;
+        bool aa=(available&1)!=0 && texelFetch(earlier_motion,ivec2(2,0),0).z>0.5;
+        bool ba=(available&2)!=0 && texelFetch(previous_motion,ivec2(2,0),0).z>0.5;
+        bool da=(available&4)!=0 && texelFetch(next_motion,ivec2(2,0),0).z>0.5;
+        bool ea=(available&8)!=0 && texelFetch(later_motion,ivec2(2,0),0).z>0.5;
+        // One queued pair anticipates exclusion. Use the same decision for
+        // each adjacent interval's camera knot, including negative phases,
+        // so entering/leaving the block cannot add a position correction.
+        if(aa || ba) a.w=0.0;
+        if(ba || ca) b.w=0.0;
+        if(ca || da) flow.w=0.0;
+        if(da || ea) d.w=0.0;
+        if(ea) e.w=0.0;
         // Require a connected three-pair run, with at most an isolated redraw
         // confirmed from the original strict pairs on either side.
         confirmed=confirmed || (flow.w>0.5 &&
                     ((a.w>0.5 && b.w>0.5) || (b.w>0.5 && d.w>0.5) ||
                      (d.w>0.5 && e.w>0.5)));
+        confirmed=confirmed && !ca && !da;
         vec2 first=camera_knot(b,flow),last=camera_knot(flow,d);
         // Redistribute one held camera interval over its two moving neighbors.
         // Both ends of the three-interval span stay fixed. Longer camera stops

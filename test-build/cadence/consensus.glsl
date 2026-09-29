@@ -246,6 +246,24 @@ void run_consensus() {
         // verified camera pan. The existing background fit and coverage
         // requirements still reject large motion disagreements and cuts.
         if(rigid_pan!=0) ok=ok && stationary_tiles==0u;
+        // Keep an uncertain transition excluded until one camera is stable.
+        // An isolated, neighbor-confirmable redraw is not a transition; two
+        // consecutive rejected pairs are. This state advances only when a new
+        // source pair is analyzed, never on repeated presentation samples.
+        vec4 state=history_valid!=0 ? texelFetch(history,ivec2(2,0),0):vec4(0);
+        vec4 prior=history_valid!=0 ? texelFetch(history,ivec2(0),0):vec4(0);
+        float rejected=ok ? 0.0:min(state.x+1.0,2.0);
+        float stable=0.0;
+        if(ok) {
+            vec2 last=prior.xy*vec2(640,360);
+            float tolerance=max(0.6,0.5*min(length(last),length(candidate)));
+            bool consistent=prior.w>0.5 && length(candidate-last)<=tolerance;
+            stable=consistent ? min(state.y+1.0,3.0):1.0;
+        }
+        bool excluded=rigid_pan!=0 &&
+                      (state.z>0.5 || (!ok && !redraw_ok) || rejected>=2.0) &&
+                      stable<3.0;
+        imageStore(dst,ivec2(2,0),vec4(rejected,stable,excluded?1.0:0.0,0));
         // A single well-aligned pair inside an animated shot must not turn
         // correction on for one frame. Count distinct, connected source pairs
         // on the GPU; cached presentation repeats never advance this streak.

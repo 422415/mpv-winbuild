@@ -71,7 +71,15 @@ losing an otherwise confirmed isolated pair.
 Brightness fades are accounted for when the aligned images have at least 0.98
 correlation. A bounded global gain/offset is fitted for motion validation only;
 it never changes the displayed colors. Mixed images in a dissolve can still
-fail the one-camera model and remain at the original cadence.
+fail the one-camera model and remain at the original cadence. An uncertain
+pair without a valid redraw candidate, or two consecutive rejected pairs,
+latches a transition exclusion. It clears only after three strictly accepted
+pairs with consistent translation. One queued pair anticipates the exclusion;
+brief accepted pairs inside the transition cannot restart smoothing. Camera
+position corrections are zero at either boundary of the excluded interval.
+Isolated, neighbor-confirmed drawing changes retain their existing handling.
+The state occupies an unused pixel in each cached motion texture, with no new
+frame buffers, GPU passes or readbacks; repeated presentation does not advance it.
 
 Similar adjacent moving intervals share a smoothed camera-position knot using
 the three-tap [1,2,1]/4 filter. This reduces uneven source camera steps and keeps

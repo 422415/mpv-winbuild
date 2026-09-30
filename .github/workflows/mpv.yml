@@ -435,6 +435,15 @@ jobs:
           find build${{ matrix.bit }} -maxdepth 3 -type d -name 'libass-prefix' -exec rm -rf {} + 2>/dev/null || true
           git add packages/libass.cmake && \
             git -c user.name=ci -c user.email=ci@local commit -m "redirect libass source"
+          # Keep Vulkan presents ordered while render/compute queues rotate.
+          cp ../libplacebo-present-queue.patch packages/libplacebo-present-queue.patch
+          sed -i '/^    UPDATE_COMMAND ""$/a\    PATCH_COMMAND ${CMAKE_COMMAND} -E chdir <SOURCE_DIR> git apply --ignore-space-change ${CMAKE_CURRENT_LIST_DIR}/libplacebo-present-queue.patch' packages/libplacebo.cmake
+          grep -Fq 'PATCH_COMMAND ${CMAKE_COMMAND} -E chdir <SOURCE_DIR> git apply --ignore-space-change ${CMAKE_CURRENT_LIST_DIR}/libplacebo-present-queue.patch' packages/libplacebo.cmake
+          # Rebuild from a clean source so restored caches cannot skip the patch.
+          rm -rf src_packages/libplacebo
+          find build${{ matrix.bit }} -maxdepth 3 -type d -name 'libplacebo-prefix' -exec rm -rf {} +
+          git add packages/libplacebo.cmake packages/libplacebo-present-queue.patch && \
+            git -c user.name=ci -c user.email=ci@local commit -m "preserve Vulkan presentation order"
           bash ../build.sh -t '${{ matrix.bit }}' -c '${{ inputs.compiler }}' -s "${{ matrix.lgpl == true && 'true' || 'false' }}"
       - name: Collect logs
         if: ${{ always() }}

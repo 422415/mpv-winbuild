@@ -9,12 +9,28 @@ export PATH="$PWD/native-prefix/bin:$PATH"
 
 # Git for Windows checks out CRLF text, while MSYS Git has a separate global
 # config. Match that checkout policy before verifying either source tree.
-for source in mpv-source libass-source; do
+git -C libplacebo-source submodule foreach --recursive '
+    git config core.autocrlf true
+    git config core.filemode false
+    git update-index --refresh
+    git diff --exit-code
+'
+for source in mpv-source libass-source libplacebo-source; do
     git -C "$source" config core.autocrlf true
     git -C "$source" config core.filemode false
     git -C "$source" update-index --refresh
     git -C "$source" diff --exit-code
 done
+
+# Test both patches carried by the release workflow against the 3.7.0 library.
+git -C libplacebo-source apply --ignore-space-change \
+    ../libplacebo-present-queue.patch ../libplacebo-nvidia-rtx-hdr.patch
+meson setup build-placebo libplacebo-source --prefix="$prefix" --buildtype=release \
+    --default-library=shared --wrap-mode=nodownload -Ddebug=true \
+    -Dvulkan=enabled -Dopengl=enabled -Dd3d11=enabled -Dshaderc=enabled \
+    -Ddemos=false -Dtests=false
+meson compile -C build-placebo -j 4
+meson install -C build-placebo
 
 meson setup build-ass libass-source --prefix="$prefix" --buildtype=release \
     --default-library=shared --wrap-mode=nodownload -Ddebug=true \
@@ -48,3 +64,5 @@ meson test -C build-mpv --print-errorlogs
 pacman -Q > native-output/build-info/msys2-packages.txt
 git -C mpv-source rev-parse HEAD > native-output/build-info/mpv-commit.txt
 git -C libass-source rev-parse HEAD > native-output/build-info/libass-commit.txt
+git -C libplacebo-source rev-parse HEAD > native-output/build-info/libplacebo-commit.txt
+cp libplacebo-present-queue.patch libplacebo-nvidia-rtx-hdr.patch native-output/build-info/

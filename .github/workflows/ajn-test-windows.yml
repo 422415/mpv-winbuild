@@ -61,6 +61,15 @@ jobs:
           path: libass-source
           fetch-depth: 1
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: haasn/libplacebo
+          # Match the libplacebo revision shipped in AJN 3.7.0 so this test
+          # exercises the RTX HDR regression rather than MSYS2's older library.
+          ref: 0d043c7f6f79cd3687c023454bdacbe615e4d96f
+          path: libplacebo-source
+          submodules: true
+          persist-credentials: false
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -103,6 +112,7 @@ jobs:
           name: ajn-native-test-logs
           path: |
             build-ass/meson-logs/
+            build-placebo/meson-logs/
             build-mpv/meson-logs/
             native-output/build-info/
           retention-days: 14

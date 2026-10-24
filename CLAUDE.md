@@ -21,12 +21,15 @@ Branch: `main`.
 
 ## The fork's entire delta vs upstream
 
-`git diff --name-status upstream/main...main` touches exactly two files:
-
-```
-M	.github/workflows/mpv.yml
-A	patch/0013-vulkan-rebase-patch.patch
-```
+`git diff --name-status upstream/main...main` touches the workflow, the two
+libplacebo patches it applies, and fork-only docs/tooling (`CLAUDE.md`, `test-build/`,
+`ajn-test-windows.yml`), and one fork-only patch:
+`patch/0003-curl-fix-build-with-pinned-openssl-snapshot.patch`. It is needed because
+the toolchain pins OpenSSL to snapshot `d8bf6cdd`, which reports 4.1 but lacks
+`ASN1_STRING_get_length()`, while curl is built from master. It edits curl master, so it
+breaks whenever curl touches that code (it did at curl `dfab21a945`, Oct 2026); rebase it
+then. Otherwise keep `patch/` identical to upstream, and sync with
+`git merge upstream/main` first when a dependency fails to build.
 
 Everything else — `build.sh`, the `patch/` series, `prunetags.sh`, `clean.yml`, `llvm.yml`,
 `toolchain.yml` — is unmodified upstream. **Do not document or change upstream behaviour
@@ -81,15 +84,6 @@ and the `<pkg>-prefix` subtree, a cached checkout silently ignores the pinned `G
 you get a stale build that looks successful. If a dispatch produces an unexpectedly old
 `libmpv-2.dll`, check these lines first.
 
-### `patch/0013-vulkan-rebase-patch.patch`
-
-Present on `main`, absent from current `upstream/main`. Its header says
-`From: zhongfly <11155705+zhongfly@users.noreply.github.com>`, i.e. it is **upstream-authored**,
-not fork content.
-
-> **Unverified:** whether upstream deleted this file after our last sync or the fork
-> deliberately carries it. `main` is currently **20 commits behind `upstream/main`**
-> (`git rev-list --count main..upstream/main`), so either is possible.
 
 ## How to dispatch a Windows build
 

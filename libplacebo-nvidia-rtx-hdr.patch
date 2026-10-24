@@ -8,7 +8,7 @@ diff --git a/src/vulkan/context.c b/src/vulkan/context.c
 +    // NVIDIA RTX HDR can deadlock inside vkQueuePresentKHR when the driver
 +    // owns queue synchronization. Keep the normal libplacebo queue locks.
 +#if defined(PL_HAVE_WIN32) && defined(VK_KHR_internally_synchronized_queues)
-+    if (vk->props.vendorID == VK_VENDOR_ID_NVIDIA) {
++    if (vk->props.vendorID == 0x10DE) { // NVIDIA PCI vendor ID
 +        VkPhysicalDeviceInternallySynchronizedQueuesFeaturesKHR *isq =
 +            (void *) vk_find_struct(&features,
 +                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INTERNALLY_SYNCHRONIZED_QUEUES_FEATURES_KHR);

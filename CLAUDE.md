@@ -23,10 +23,13 @@ Branch: `main`.
 
 `git diff --name-status upstream/main...main` touches the workflow, the two
 libplacebo patches it applies, and fork-only docs/tooling (`CLAUDE.md`, `test-build/`,
-`ajn-test-windows.yml`). **`patch/` must stay identical to upstream:** upstream drops
-patches once they stop being needed, and a stale fork-only patch that no longer applies
-fails the build (the curl/OpenSSL patch did, Oct 2026). Sync with
-`git merge upstream/main` before dispatching if the build breaks on a dependency.
+`ajn-test-windows.yml`), and one fork-only patch:
+`patch/0003-curl-fix-build-with-pinned-openssl-snapshot.patch`. It is needed because
+the toolchain pins OpenSSL to snapshot `d8bf6cdd`, which reports 4.1 but lacks
+`ASN1_STRING_get_length()`, while curl is built from master. It edits curl master, so it
+breaks whenever curl touches that code (it did at curl `dfab21a945`, Oct 2026); rebase it
+then. Otherwise keep `patch/` identical to upstream, and sync with
+`git merge upstream/main` first when a dependency fails to build.
 
 Everything else — `build.sh`, the `patch/` series, `prunetags.sh`, `clean.yml`, `llvm.yml`,
 `toolchain.yml` — is unmodified upstream. **Do not document or change upstream behaviour

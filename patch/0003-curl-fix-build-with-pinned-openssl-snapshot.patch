@@ -1,0 +1,54 @@
+From c67fe19275aa8f85acab1d006696590e0ac3d80b Mon Sep 17 00:00:00 2001
+From: the-database <25811902+the-database@users.noreply.github.com>
+Date: Sat, 24 Oct 2026 08:21:22 -0400
+Subject: [PATCH] curl: fix build with the pinned OpenSSL 4.1 snapshot
+
+curl calls ASN1_STRING_get_length() whenever OpenSSL reports 4.1, but the pinned OpenSSL snapshot (d8bf6cdd) predates that function. Always use curl's local wrapper instead. Rebased onto curl dfab21a945, which renamed the wrapper.
+---
+ ...build-with-pre-release-4.1-snapshots.patch | 34 +++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+ create mode 100644 packages/curl-0002-openssl-build-with-pre-release-4.1-snapshots.patch
+
+diff --git a/packages/curl-0002-openssl-build-with-pre-release-4.1-snapshots.patch b/packages/curl-0002-openssl-build-with-pre-release-4.1-snapshots.patch
+new file mode 100644
+index 0000000..e0a5735
+--- /dev/null
++++ b/packages/curl-0002-openssl-build-with-pre-release-4.1-snapshots.patch
+@@ -0,0 +1,34 @@
++From 7b67e5f06ffcef94e5b0b1f6a5ed5013d5e584d7 Mon Sep 17 00:00:00 2001
++From: the-database <25811902+the-database@users.noreply.github.com>
++Date: Sat, 24 Oct 2026 08:21:06 -0400
++Subject: [PATCH] openssl: build with pre-release OpenSSL 4.1 snapshots
++
++---
++ lib/vtls/openssl.c | 6 ++----
++ 1 file changed, 2 insertions(+), 4 deletions(-)
++
++diff --git a/lib/vtls/openssl.c b/lib/vtls/openssl.c
++index a86e872..195e7e5 100644
++--- a/lib/vtls/openssl.c
+++++ b/lib/vtls/openssl.c
++@@ -169,15 +169,13 @@ typedef unsigned long sslerr_t;
++ #endif
++ #define ossl_valsize_t numcert_t
++ 
++-#if OPENSSL_VERSION_NUMBER >= 0x40100000L
++-#define ossl_ASN1_STRING_get_length ASN1_STRING_get_length
++-#else
+++/* Pre-release OpenSSL 4.1 snapshots report 4.1 but predate
+++   ASN1_STRING_get_length(), so always use the local wrapper. */
++ static size_t ossl_ASN1_STRING_get_length(const ASN1_STRING *str)
++ {
++    const int length = ASN1_STRING_length(str);
++    return length >= 0 ? (size_t)length : 0;
++ }
++-#endif
++ 
++ static CURLcode push_certinfo(struct Curl_easy *data,
++                               BIO *mem, const char *label, int num)
++-- 
++2.45.2.windows.1
++
+-- 
+2.45.2.windows.1
+

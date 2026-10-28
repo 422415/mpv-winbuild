@@ -70,6 +70,19 @@ class NativeMetadataTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "build option"): self.produce()
         self.assertFalse(self.output.exists())
 
+    def test_mvtools_requires_the_optional_dll_and_matching_bridge(self):
+        self.contract.update(privateSceneAbi=1, privateMvtoolsSceneAbi=1)
+        self.save_contract()
+        (self.source / "video/filter/ajn_scene_shared.h").write_text(
+            "#define AJN_SCENE_VERSION 1\n#define AJN_SCENE_MVTOOLS_VERSION 1\n")
+        (self.source / "video/filter/vf_animejanai.c").write_text('"scene-map"')
+        with self.assertRaisesRegex(ValueError, "MVTools"): self.produce()
+        (self.binaries / "ajn-mvtools.dll").write_bytes(b"mvtools-test")
+        self.imports["ajn-mvtools.dll"] = ["ucrtbase.dll"]
+        record = self.produce()
+        self.assertEqual(record["privateMvtoolsSceneAbi"], 1)
+        self.assertIn("ajn-mvtools.dll", record["files"])
+
     def test_required_feature_missing(self):
         (self.build / "config.h").write_text("#define HAVE_D3D11 1\n")
         with self.assertRaisesRegex(ValueError, "Missing native features"): self.produce()

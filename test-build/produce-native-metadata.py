@@ -193,6 +193,10 @@ def produce(source, libass_source, build, binaries, output, linkage):
         metadata["privateMvtoolsSceneAbi"] = mvtools_abi
     if enhanced_abi is not None:
         metadata["privateEnhancedSceneAbi"] = enhanced_abi
+    if contract.get("privatePlayerAnalysisAbi") == 1:
+        metadata["privatePlayerAnalysisAbi"] = 1
+        metadata["sampleBackends"] = ["DirectML", "TensorRT"]
+        metadata["sampleColor"] = "source-or-processed-sdr"
     if streaming_abi is not None:
         metadata["privateStreamingAbi"] = streaming_abi
     encoded = (json.dumps(metadata, indent=2) + "\n").encode("utf-8")

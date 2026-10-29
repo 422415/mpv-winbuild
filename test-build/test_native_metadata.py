@@ -82,6 +82,12 @@ class NativeMetadataTests(unittest.TestCase):
         record = self.produce()
         self.assertEqual(record["privateMvtoolsSceneAbi"], 1)
         self.assertIn("ajn-mvtools.dll", record["files"])
+        self.contract["privateEnhancedSceneAbi"] = 1
+        self.save_contract()
+        with self.assertRaisesRegex(ValueError, "enhanced"): self.produce()
+        with (self.source / "video/filter/ajn_scene_shared.h").open("a") as header:
+            header.write("#define AJN_SCENE_ENHANCED_VERSION 1\n")
+        self.assertEqual(self.produce()["privateEnhancedSceneAbi"], 1)
 
     def test_required_feature_missing(self):
         (self.build / "config.h").write_text("#define HAVE_D3D11 1\n")

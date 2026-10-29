@@ -109,11 +109,16 @@ def produce(source, libass_source, build, binaries, output, linkage):
     subtitles_abi = contract.get("privateSubtitlesAbi")
     scene_abi = contract.get("privateSceneAbi")
     mvtools_abi = contract.get("privateMvtoolsSceneAbi")
+    enhanced_abi = contract.get("privateEnhancedSceneAbi")
     if mvtools_abi is not None and (mvtools_abi != 1 or scene_abi != 1 or
             "ajn-mvtools.dll" not in files or
             "#define AJN_SCENE_MVTOOLS_VERSION 1" not in
             (source / "video/filter/ajn_scene_shared.h").read_text()):
         raise ValueError("Unsupported native MVTools scene contract or missing detector DLL")
+    if enhanced_abi is not None and (enhanced_abi != 1 or mvtools_abi != 1 or
+            "#define AJN_SCENE_ENHANCED_VERSION 1" not in
+            (source / "video/filter/ajn_scene_shared.h").read_text()):
+        raise ValueError("Unsupported enhanced scene contract or missing MVTools bridge")
     streaming_abi = contract.get("privateStreamingAbi")
     if streaming_abi is not None and (streaming_abi != 1 or
             "#define AJN_STREAM_VERSION 1" not in (source / "video/filter/vf_animejanai.c").read_text() or
@@ -186,6 +191,8 @@ def produce(source, libass_source, build, binaries, output, linkage):
         metadata["privateSceneAbi"] = scene_abi
     if mvtools_abi is not None:
         metadata["privateMvtoolsSceneAbi"] = mvtools_abi
+    if enhanced_abi is not None:
+        metadata["privateEnhancedSceneAbi"] = enhanced_abi
     if streaming_abi is not None:
         metadata["privateStreamingAbi"] = streaming_abi
     encoded = (json.dumps(metadata, indent=2) + "\n").encode("utf-8")

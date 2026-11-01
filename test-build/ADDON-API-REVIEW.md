@@ -4,6 +4,8 @@ This is the producer/packaging companion to the API 1.12 PR set. See [README.md]
 
 The ordinary cross-build remains available. `addon_metadata=true` enables the addon preparation, dependency and metadata steps. Use full mpv/libass commits and `release=false` for acceptance builds. The optional Windows native-test workflow produces a separate MSYS2 test artifact; it is not a claim of bit-identical production output.
 
+The workflow rejects `addon_metadata=true` combined with `release=true`. Addon build and toolchain caches use separate key prefixes; production build-cache paths and keys are unchanged. Failed runs do not save these caches. Dependency preparation is tested against the pinned toolchain's actual curl recipe, including its empty `PATCH_COMMAND` form.
+
 Review in this order:
 
 1. `prepare-addon-build.py` and `prepare-addon-dependencies.py`: retain required configuration/introspection before upstream cleanup and include optional native providers.

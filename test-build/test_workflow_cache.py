@@ -11,12 +11,18 @@ class BuildCacheTests(unittest.TestCase):
         for name in ("Lookup Build Cache", "Restore Build Cache", "Save Build Cache"):
             step = re.search(r"(?ms)^      - name: " + name + r"\n(.*?)(?=^      - name:|\Z)", workflow)
             self.assertIsNotNone(step, name)
-            paths = re.search(r"(?m)^          path: \|\n((?:            [^\n]*\n)+)", step[1])
+            paths = re.search(r"(?m)^          path: ([^\n]+)", step[1])
             self.assertIsNotNone(paths, name)
-            patterns.append(tuple(line.strip() for line in paths[1].splitlines()))
+            patterns.append(paths[1].strip())
         self.assertEqual(patterns[0], patterns[1])
         self.assertEqual(patterns[1], patterns[2])
-        self.assertTrue(any(p.startswith("!") and p.endswith("/ajn-addon-configuration") for p in patterns[0]))
+        self.assertEqual(patterns[0], "${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}")
+
+    def test_addon_builds_do_not_publish_or_reuse_production_build_keys(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/mpv.yml").read_text()
+        self.assertIn("inputs.addon_metadata }} && ${{ inputs.release", workflow)
+        self.assertIn("${{ inputs.addon_metadata && 'addon-' || '' }}${{ inputs.compiler }}-build", workflow)
+        self.assertNotIn("success() || inputs.addon_metadata", workflow)
 
 
 if __name__ == "__main__": unittest.main()

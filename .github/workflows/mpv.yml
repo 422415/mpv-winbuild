@@ -526,7 +526,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: addon-native-diagnostics-${{ matrix.bit }}
-          path: ${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}
+          path: |
+            mpv-winbuild-cmake/build${{ matrix.bit }}/ajn-addon-configuration/**
+            mpv-winbuild-cmake/build${{ matrix.bit }}/mpv-*/*.exe
+            mpv-winbuild-cmake/build${{ matrix.bit }}/mpv-*/*.com
             mpv-winbuild-cmake/build${{ matrix.bit }}/mpv-*/*.dll
           if-no-files-found: warn
       - name: Upload addon build configuration

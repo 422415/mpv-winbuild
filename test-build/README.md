@@ -1,5 +1,7 @@
 # Optional Windows native test build
 
+For the coordinated API 1.12 review, start with [ADDON-API-REVIEW.md](ADDON-API-REVIEW.md).
+
 `.github/workflows/ajn-test-windows.yml` builds the selected mpv and libass sources
 with MSYS2 UCRT64 on Windows Server 2022. It accepts manual dispatches and tests
 changes to the integration branch. It uploads test artifacts. The ordinary

@@ -9,6 +9,19 @@ spec.loader.exec_module(module)
 
 
 class CurlPatchTests(unittest.TestCase):
+    def test_pinned_recipe_installs_the_include_adjustment(self):
+        recipe_spec = importlib.util.spec_from_file_location("prepare", Path(__file__).with_name("prepare-addon-dependencies.py"))
+        recipe_module = importlib.util.module_from_spec(recipe_spec)
+        recipe_spec.loader.exec_module(recipe_module)
+        with tempfile.TemporaryDirectory() as area:
+            root = Path(area)
+            recipe = root / "packages/curl.cmake"
+            recipe.parent.mkdir()
+            recipe.write_text('ExternalProject_Add(curl\n    PATCH_COMMAND ""\n    UPDATE_COMMAND ""\n)\n')
+            recipe_module.prepare(root, Path(__file__).with_name("patch-curl-includes.py"))
+            self.assertIn('PATCH_COMMAND ${EXEC} python "', recipe.read_text())
+            self.assertIn('UPDATE_COMMAND ""', recipe.read_text())
+
     def test_fresh_and_cached_source_preserve_exactly_one_include(self):
         with tempfile.TemporaryDirectory() as area:
             root = Path(area)

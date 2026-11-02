@@ -38,6 +38,12 @@ the portable artifact. See `build-info/ggml-reload.json` and the accompanying
 patch for exact provenance. This does not change ordinary playback code or the
 static production build.
 
+The ggml version mismatch check is intentional: a newer rolling MSYS2 runtime
+must not be paired with unreviewed 0.28.0 replacement code. When that package
+changes, update the matching source version/commit/archive checksum, review the
+patch, and rerun the export and reload checks before updating the pin. The
+FFmpeg 6.1 callback check uses the immutable commit behind its release tag.
+
 The required headless playback check disables `load-select` because the Server
 runner has no audio endpoint and the AJN player currently fails during WASAPI
 device-notification cleanup with that script enabled. An additional diagnostic

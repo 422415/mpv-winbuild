@@ -6,6 +6,8 @@ The ordinary cross-build remains available. `addon_metadata=true` enables the ad
 
 The workflow rejects `addon_metadata=true` combined with `release=true`. Addon build and toolchain caches use separate key prefixes; production build-cache paths and keys are unchanged. Failed runs do not save these caches. Dependency preparation is tested against the pinned toolchain's actual curl recipe, including its empty `PATCH_COMMAND` form.
 
+The old toolchain's fontconfig patches stopped applying to its moving `main` dependency. Addon preparation uses [upstream's patch rebase](https://github.com/shinchiro/mpv-winbuild-cmake/commit/bda10a2816ce9908d419b3f4b564227330457e76) and pins fontconfig to `b6cf4b270c42b13347a4012cdceb9bbc3d2e8f32`, where both patches apply with `git am --3way`. The two patch files retain their upstream author metadata. This override only runs for addon metadata builds.
+
 Review in this order:
 
 1. `prepare-addon-build.py` and `prepare-addon-dependencies.py`: retain required configuration/introspection before upstream cleanup and include optional native providers.

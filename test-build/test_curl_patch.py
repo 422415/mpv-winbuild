@@ -18,9 +18,14 @@ class CurlPatchTests(unittest.TestCase):
             recipe = root / "packages/curl.cmake"
             recipe.parent.mkdir()
             recipe.write_text('ExternalProject_Add(curl\n    PATCH_COMMAND ""\n    UPDATE_COMMAND ""\n)\n')
+            fontconfig = recipe.with_name("fontconfig.cmake")
+            fontconfig.write_text('ExternalProject_Add(fontconfig\n    GIT_TAG main\n)\n')
             recipe_module.prepare(root, Path(__file__).with_name("patch-curl-includes.py"))
             self.assertIn('PATCH_COMMAND ${EXEC} python "', recipe.read_text())
             self.assertIn('UPDATE_COMMAND ""', recipe.read_text())
+            self.assertIn('GIT_TAG ' + recipe_module.FONTCONFIG_REVISION, fontconfig.read_text())
+            for patch in Path(__file__).parent.glob('fontconfig-*.patch'):
+                self.assertEqual(patch.read_bytes(), (recipe.parent / patch.name).read_bytes())
 
     def test_fresh_and_cached_source_preserve_exactly_one_include(self):
         with tempfile.TemporaryDirectory() as area:

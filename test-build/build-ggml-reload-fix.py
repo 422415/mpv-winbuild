@@ -47,7 +47,9 @@ def build(stock, prefix, work):
     # Otherwise Git can discover the producer's parent checkout and silently
     # skip src/ggml.cpp as outside this subdirectory's path prefix.
     subprocess.run(["git", "init", "--quiet", str(source)], check=True)
-    subprocess.run(["git", "apply", str(patch)], cwd=source, check=True)
+    # The Windows producer checkout can have CRLF; the source tarball has LF.
+    subprocess.run(["git", "apply", "-"], input=patch.read_bytes().replace(b"\r\n", b"\n"),
+                   cwd=source, check=True)
     output = work / "build"
     subprocess.run(["cmake", "-S", str(source), "-B", str(output), "-G", "Ninja",
                     "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=ON",

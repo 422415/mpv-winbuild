@@ -46,6 +46,9 @@ meson setup build-mpv mpv-source --prefix="$prefix" --buildtype=release \
     -Dlua=luajit -Djavascript=enabled -Dd3d11=enabled -Dvulkan=enabled \
     -Dmanpage-build=disabled -Dhtml-build=disabled \
     -Dpdf-build=disabled
+(cd ffmpeg61-source && ./configure --disable-everything --disable-programs \
+    --disable-doc --disable-x86asm --disable-autodetect)
+python test-build/check-addon-compilation.py build-mpv ffmpeg61-source
 meson compile -C build-mpv -j 4
 meson install -C build-mpv
 

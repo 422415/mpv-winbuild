@@ -24,5 +24,12 @@ class BuildCacheTests(unittest.TestCase):
         self.assertIn("${{ inputs.addon_metadata && 'addon-' || '' }}${{ inputs.compiler }}-build", workflow)
         self.assertNotIn("success() || inputs.addon_metadata", workflow)
 
+    def test_addon_builds_do_not_save_shared_dependency_caches(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/mpv.yml").read_text()
+        for name in ("Save clang sysroot cache", "Save Sources Cache", "Save Rust Cache"):
+            step = re.search(r"(?ms)^      - name: " + name + r"\n(.*?)(?=^      - name:|\Z)", workflow)
+            self.assertIsNotNone(step, name)
+            self.assertIn("inputs.addon_metadata != true", step[1])
+
 
 if __name__ == "__main__": unittest.main()

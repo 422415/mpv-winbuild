@@ -96,6 +96,12 @@ jobs:
             mingw-w64-ucrt-x86_64-libarchive
             mingw-w64-ucrt-x86_64-lcms2
             mingw-w64-ucrt-x86_64-vulkan-headers
+      - uses: actions/checkout@v4
+        with:
+          repository: FFmpeg/FFmpeg
+          ref: n6.1
+          path: ffmpeg61-source
+          persist-credentials: false
       - name: Build and test pinned native components
         run: bash test-build/build-windows.sh
       - name: Upload native test package

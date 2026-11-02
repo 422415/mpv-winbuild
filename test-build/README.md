@@ -28,6 +28,16 @@ Windows system directory on PATH, and places those same DLLs beside the test
 executables before running Meson's suite. Licenses, file hashes and dependency
 metadata accompany the binaries. Artifacts expire after 14 days.
 
+The shared ggml base dependency is rebuilt from checksum-pinned 0.28.0 source
+with a small Windows DLL fix: it must not leave a process-wide C++ terminate
+handler pointing into unloaded code. This removes that shared-library hook;
+the application retains its handler and ggml's explicit assertion backtraces
+remain available. The producer checks the installed version and exported ABI,
+runs a repeated load/unload regression, then stages that DLL for both tests and
+the portable artifact. See `build-info/ggml-reload.json` and the accompanying
+patch for exact provenance. This does not change ordinary playback code or the
+static production build.
+
 The required headless playback check disables `load-select` because the Server
 runner has no audio endpoint and the AJN player currently fails during WASAPI
 device-notification cleanup with that script enabled. An additional diagnostic

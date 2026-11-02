@@ -28,6 +28,21 @@ failure cannot hide warnings in those files. It also checks the mux callback
 against actual FFmpeg 6.1 headers. `prepare-test-runtime.py` stages the produced
 MVTools DLL beside each test executable before running the native suite.
 
+The MSYS2 shared runtime also rebuilds the matching ggml 0.28.0 base DLL with
+`ggml-shared-terminate.patch`. That DLL otherwise installs a process-wide C++
+terminate handler that survives unload and causes reload failures. The patch
+leaves the application's handler untouched in Windows shared builds; explicit
+ggml assertion/backtrace paths remain. It adds no player-side hook, permanent
+module pin, frame work, lock or readback. Static production builds are unchanged.
+
+`build-ggml-reload-fix.py` checks the original version, verifies the pinned source
+archive, preserves every original named export and tests repeated DLL load/unload
+with the application's handler intact. An unreviewed dependency version stops
+the build instead of mixing versions. The artifact includes source/patch/DLL
+hashes, the source commit, patch and MIT license. The complete native suite,
+including the unmodified `libmpv-lifetime` test and the same-process sample
+reload test, runs against the resulting bundled dependencies.
+
 No additional libass patch belongs to the addon set. Build against AJN's existing libass fork and record the selected commit. Source changes for camera pans, display-sync experiments and unrelated inference optimizations are outside this PR.
 
 Existing native build and desktop integration results are identified by commit/run in the main review guide. Documentation-only updates do not justify rebuilding the unchanged native player. Rebuild and rerun affected native tests when the source, ABI, dependency or staging logic changes. Do not advertise the addon-enabled public package until inference, player, Manager and host have been assembled and verified together.

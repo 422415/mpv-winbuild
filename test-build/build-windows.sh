@@ -7,6 +7,11 @@ prefix="$(cygpath -m "$PWD/native-prefix")"
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
 export PATH="$PWD/native-prefix/bin:$PATH"
 
+# ggml's shared DLL must not leave its process-wide C++ terminate callback
+# installed after unload. Rebuild the matching dependency, not the player path.
+python test-build/build-ggml-reload-fix.py \
+    "$(cygpath -m /ucrt64/bin/ggml-base-0.dll)" "$prefix" build-ggml-reload
+
 # Git for Windows checks out CRLF text, while MSYS Git has a separate global
 # config. Match that checkout policy before verifying either source tree.
 git -C libplacebo-source submodule foreach --recursive '
@@ -53,6 +58,9 @@ meson compile -C build-mpv -j 4
 meson install -C build-mpv
 
 python test-build/stage-native.py "$prefix" "$(cygpath -m /ucrt64)" native-output
+cp build-ggml-reload/ggml-reload.json test-build/ggml-shared-terminate.patch native-output/build-info/
+mkdir -p native-output/licenses/ggml-reload
+cp build-ggml-reload/ggml-*/LICENSE native-output/licenses/ggml-reload/
 if [ -f mpv-source/etc/ajn-native-capabilities.json ]; then
     python test-build/produce-native-metadata.py --source mpv-source --libass-source libass-source \
         --build build-mpv --binaries native-output --linkage shared \

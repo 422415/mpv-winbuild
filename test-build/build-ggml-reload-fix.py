@@ -44,6 +44,9 @@ def build(stock, prefix, work):
     with tarfile.open(archive) as bundle:
         bundle.extractall(work, filter="data")
     patch = here / "ggml-shared-terminate.patch"
+    # Otherwise Git can discover the producer's parent checkout and silently
+    # skip src/ggml.cpp as outside this subdirectory's path prefix.
+    subprocess.run(["git", "init", "--quiet", str(source)], check=True)
     subprocess.run(["git", "apply", str(patch)], cwd=source, check=True)
     output = work / "build"
     subprocess.run(["cmake", "-S", str(source), "-B", str(output), "-G", "Ninja",

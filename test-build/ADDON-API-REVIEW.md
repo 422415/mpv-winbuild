@@ -6,6 +6,10 @@ The ordinary cross-build remains available. `addon_metadata=true` enables the ad
 
 The workflow rejects `addon_metadata=true` combined with `release=true`. Addon build and toolchain caches use separate key prefixes; production build-cache paths and keys are unchanged. Failed runs do not save these caches. Dependency preparation is tested against the pinned toolchain's actual curl recipe, including its empty `PATCH_COMMAND` form.
 
+Addon runs also skip saving the shared `clang_root`, source-package and Rust
+caches. Production prefix restores cannot therefore select modified addon
+sysroots or detached dependency sources from those saves.
+
 The old toolchain's fontconfig patches stopped applying to its moving `main` dependency. Addon preparation uses [upstream's patch rebase](https://github.com/shinchiro/mpv-winbuild-cmake/commit/bda10a2816ce9908d419b3f4b564227330457e76) and pins fontconfig to `b6cf4b270c42b13347a4012cdceb9bbc3d2e8f32`, where both patches apply with `git am --3way`. The two patch files retain their upstream author metadata. This override only runs for addon metadata builds.
 
 Review in this order:
@@ -17,6 +21,12 @@ Review in this order:
 5. Workflow wiring and the focused Python tests under this directory.
 
 The main package assembler refuses an incomplete or mismatched native record. A checked-in capability JSON is only the source expectation; a released package needs metadata from its producing build. The same matching native files must accompany mpv.exe and mpv.net. Keep source and third-party license notices available to recipients.
+
+The Windows native workflow compiles the addon filters, CUDA ownership code and
+mux callback with `-Werror` before the full build, so an unrelated later source
+failure cannot hide warnings in those files. It also checks the mux callback
+against actual FFmpeg 6.1 headers. `prepare-test-runtime.py` stages the produced
+MVTools DLL beside each test executable before running the native suite.
 
 No additional libass patch belongs to the addon set. Build against AJN's existing libass fork and record the selected commit. Source changes for camera pans, display-sync experiments and unrelated inference optimizations are outside this PR.
 

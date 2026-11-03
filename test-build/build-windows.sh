@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build the pinned AJN player and libass with the MSYS2 UCRT64 toolchain.
 set -euo pipefail
+# Native Python must use MSYS2 Bash, not Windows' bash.exe launcher.
+export AJN_TEST_BASH="$(cygpath -m /usr/bin/bash)"
 python -B -m unittest discover -s test-build -p 'test_*.py'
 
 prefix="$(cygpath -m "$PWD/native-prefix")"

@@ -96,7 +96,7 @@ source "$1"
             env["PATH"] = str(Path(bash).parent) + os.pathsep + env.get("PATH", "")
         result = subprocess.run([bash, "-c", mocks, "fixture", (ROOT / "prunetags.sh").as_posix()],
                                 env=env, text=True, capture_output=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         deleted = [line.removeprefix("Deleting ") for line in result.stdout.splitlines() if line.startswith("Deleting ")]
         self.assertIn(tags[44], deleted)
         self.assertNotIn(tags[0], deleted)

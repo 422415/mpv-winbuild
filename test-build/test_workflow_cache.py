@@ -18,9 +18,8 @@ class BuildCacheTests(unittest.TestCase):
         self.assertEqual(patterns[1], patterns[2])
         self.assertEqual(patterns[0], "${{ github.workspace }}/mpv-winbuild-cmake/build${{ matrix.bit }}")
 
-    def test_addon_builds_do_not_publish_or_reuse_production_build_keys(self):
+    def test_addon_builds_do_not_reuse_production_build_keys(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/mpv.yml").read_text()
-        self.assertIn("inputs.addon_metadata }} && ${{ inputs.release", workflow)
         self.assertIn("${{ inputs.addon_metadata && 'addon-' || '' }}${{ inputs.compiler }}-build", workflow)
         self.assertNotIn("success() || inputs.addon_metadata", workflow)
 

@@ -114,8 +114,6 @@ jobs:
             core.setOutput('libass_repository', process.env.LIBASS_REPOSITORY);
             if (${{ inputs.addon_metadata }} && ('${{ inputs.build_target }}' !== '64bit' || ${{ inputs.lgpl }} || '${{ inputs.prs }}' !== ''))
               throw new Error('Addon metadata requires one 64bit GPL build without additional PR patches');
-            if (${{ inputs.addon_metadata }} && ${{ inputs.release }})
-              throw new Error('Addon test builds require release=false');
             if (${{ inputs.release }} && (process.env.MPV_REPOSITORY !== 'the-database/mpv' || process.env.LIBASS_REPOSITORY !== 'the-database/libass'))
               throw new Error('Production releases require the-database/mpv and the-database/libass; use release=false for fork builds');
             const commit = await github.rest.repos.getCommit({
@@ -792,12 +790,19 @@ jobs:
             }
 
       - name: Get current time
-        run: |
-          echo "long_time=$(date "+%Y-%m-%d %H:%M")" >> $GITHUB_ENV
-          echo "short_time=$(date "+%Y-%m-%d")" >> $GITHUB_ENV
-          echo "tag_name=$(date "+%Y-%m-%d")-$(head -c 10 <<< "${{needs.params.outputs.sha}}")"  >> $GITHUB_ENV
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const now = new Date().toISOString();
+            const date = now.slice(0, 10);
+            const sha = '${{ needs.params.outputs.sha }}';
+            const suffix = ${{ inputs.addon_metadata }} ? '-addons-${{ github.run_id }}' : '';
+            core.exportVariable('long_time', now.slice(0, 16).replace('T', ' '));
+            core.exportVariable('short_time', date);
+            core.exportVariable('tag_name', date + '-' + sha.slice(0, 10) + suffix);
 
       - name: Commit version & remove existing tag
+        if: ${{ inputs.addon_metadata != true }}
         env:
           tag_name: ${{ env.tag_name }}
           GH_TOKEN: ${{ github.token }}
@@ -876,20 +881,21 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "${{ inputs.addon_metadata && 'artifacts/mpv*.7z,artifacts/ffmpeg*.7z,artifacts/mpv-addon-native-*.json,sha256.txt' || 'artifacts/mpv*.7z,artifacts/ffmpeg*.7z,sha256.txt' }}"
-          commit: version
-          name: "${{ env.long_time }}"
+          commit: ${{ inputs.addon_metadata && github.sha || 'version' }}
+          name: "${{ env.long_time }}${{ inputs.addon_metadata && ' (addon natives)' || '' }}"
           body: "${{ steps.note.outputs.note }}"
           tag: "${{ env.tag_name }}"
-          allowUpdates: true
+          allowUpdates: ${{ inputs.addon_metadata != true }}
           artifactErrorsFailBuild: true
           prerelease: false
-          makeLatest: true
+          makeLatest: ${{ inputs.addon_metadata != true }}
       - name: Attest
         uses: actions/attest@v4
         continue-on-error: true
         with:
           subject-path: 'artifacts/*.7z'
       - name: Prune old releases
+        if: ${{ inputs.addon_metadata != true }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

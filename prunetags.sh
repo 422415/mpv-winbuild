@@ -18,6 +18,11 @@ CUR_MONTH="-1"
 CUR_DAY="-1"
 
 for TAG in ${TAGS[@]}; do
+    # Addon releases are explicitly pinned by the assembler, not daily builds.
+    if [[ "$TAG" == *-addons-* ]]; then
+        KEEP_TAGS+=( "$TAG" )
+        continue
+    fi
     if [[ ${#DAILY_TAGS[@]} -lt ${KEEP_DAILY} ]]; then
         TAG_MONTH="$(echo $TAG | cut -d- -f2)"
         TAG_DAY="$(echo $TAG | cut -d- -f3)"

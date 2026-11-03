@@ -4,7 +4,7 @@ This is the producer/packaging companion to the API 1.12 PR set. See [README.md]
 
 The ordinary cross-build remains available. `addon_metadata=true` enables the addon preparation, dependency and metadata steps. Use full mpv/libass commits and `release=false` for acceptance builds. The optional Windows native-test workflow produces a separate MSYS2 test artifact; it is not a claim of bit-identical production output.
 
-The workflow rejects `addon_metadata=true` combined with `release=true`. Addon build and toolchain caches use separate key prefixes; production build-cache paths and keys are unchanged. Failed runs do not save these caches. Dependency preparation is tested against the pinned toolchain's actual curl recipe, including its empty `PATCH_COMMAND` form.
+`addon_metadata=true` can publish an official 64-bit GPL release with `release=true`; fork source repositories are rejected for public releases. Addon tags append `-addons-<workflow-run-id>`, never replace the normal version/latest release, and are retained by daily pruning. Published addon assets cannot be overwritten by a rerun. The host assembler selects them with separate `AddonMpvForkVersion`/date/hash pins. Addon build and toolchain caches use separate key prefixes; production build-cache paths and keys are unchanged. Failed runs do not save these caches. Dependency preparation is tested against the pinned toolchain's actual curl recipe, including its empty `PATCH_COMMAND` form.
 
 Addon runs also skip saving the shared `clang_root`, source-package and Rust
 caches. Production prefix restores cannot therefore select modified addon

@@ -27,7 +27,7 @@ for source in mpv-source libass-source libplacebo-source; do
     git -C "$source" diff --exit-code
 done
 
-# Test both patches carried by the release workflow against the 3.7.0 library.
+# Test both patches carried by the release workflow against the pinned library.
 git -C libplacebo-source apply --ignore-space-change \
     ../libplacebo-present-queue.patch ../libplacebo-nvidia-rtx-hdr.patch
 meson setup build-placebo libplacebo-source --prefix="$prefix" --buildtype=release \

@@ -64,9 +64,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: haasn/libplacebo
-          # Match the libplacebo revision shipped in AJN 3.7.0 so this test
-          # exercises the RTX HDR regression rather than MSYS2's older library.
-          ref: 0d043c7f6f79cd3687c023454bdacbe615e4d96f
+          # The synced mpv source requires libplacebo >= 7.387.0. Keep an exact
+          # version pin and exercise both AJN Vulkan patches on this source.
+          ref: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65 # v7.387.0
           path: libplacebo-source
           submodules: true
           persist-credentials: false

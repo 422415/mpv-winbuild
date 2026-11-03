@@ -29,6 +29,8 @@ class PreparationTests(unittest.TestCase):
         self.assertIsNotNone(ninja, "Install Ninja to exercise the real cleanup sequence")
         fixture = self.toolchain / "fixture"
         (fixture / "meson-info").mkdir(parents=True)
+        (fixture / "video/filter/mvtools").mkdir(parents=True)
+        (fixture / "video/filter/mvtools/ajn-mvtools.dll").write_bytes(b"detector fixture")
         (fixture / "config.h").write_text("#define HAVE_D3D11 1\n")
         (fixture / "meson-info/intro-projectinfo.json").write_text(json.dumps({"descriptive_name": "mpv"}))
         (fixture / "meson-info/intro-buildoptions.json").write_text(json.dumps([{"name": "libmpv", "value": True}]))
@@ -42,7 +44,8 @@ function(cleanup name last_step)
 endfunction()
 include(packages/mpv.cmake)
 ''')
-        self.package.write_text('''ExternalProject_Add(mpv
+        self.package.write_text('''set(mpv_options -Dlibmpv=true)
+ExternalProject_Add(mpv
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/fixture"
     DOWNLOAD_COMMAND ""
     UPDATE_COMMAND ""
@@ -62,7 +65,9 @@ cleanup(mpv copy-package-dir)
         saved = build / "ajn-addon-configuration"
         for file in fixture.rglob("*"):
             if file.is_file():
-                self.assertEqual((saved / file.relative_to(fixture)).read_bytes(), file.read_bytes())
+                name = file.name if file.suffix == ".dll" else file.relative_to(fixture)
+                self.assertEqual((saved / name).read_bytes(), file.read_bytes())
+        self.assertIn("-Dajn-mvtools=true", self.package.read_text())
         self.assertIn('--build "$buildroot/build$bit/ajn-addon-configuration"', self.script.with_name("build-addons.sh").read_text())
         self.assertIn('ninja -C $buildroot/build$bit mpv || exit 1', self.script.with_name("build-addons.sh").read_text())
 

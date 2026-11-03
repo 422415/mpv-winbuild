@@ -47,7 +47,7 @@ meson install -C build-ass
 
 meson setup build-mpv mpv-source --prefix="$prefix" --buildtype=release \
     --wrap-mode=nodownload -Dlibmpv=true -Dcplayer=true -Dtests=true -Ddebug=true \
-    -Dcuda-hwaccel=enabled -Dcuda-interop=enabled \
+    -Dcuda-hwaccel=enabled -Dcuda-interop=enabled -Dajn-mvtools=true \
     -Dlua=luajit -Djavascript=enabled -Dd3d11=enabled -Dvulkan=enabled \
     -Dmanpage-build=disabled -Dhtml-build=disabled \
     -Dpdf-build=disabled

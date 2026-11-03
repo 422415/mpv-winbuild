@@ -15,11 +15,15 @@ def prepare(script, toolchain):
     cleanup = "cleanup(mpv copy-package-dir)"
     if cmake.count(cleanup) != 1:
         raise RuntimeError("Upstream mpv cleanup changed; review configuration preservation")
+    if cmake.count("-Dlibmpv=true") != 1:
+        raise RuntimeError("Upstream mpv options changed; review optional detector configuration")
+    cmake = cmake.replace("-Dlibmpv=true", "-Dlibmpv=true -Dajn-mvtools=true")
     saved = "${CMAKE_BINARY_DIR}/ajn-addon-configuration"
     capture = f'''ExternalProject_Add_Step(mpv save-addon-configuration
     DEPENDEES copy-package-dir
     COMMAND ${{CMAKE_COMMAND}} -E make_directory "{saved}/meson-info"
     COMMAND ${{CMAKE_COMMAND}} -E copy <BINARY_DIR>/config.h "{saved}/config.h"
+    COMMAND ${{CMAKE_COMMAND}} -E copy <BINARY_DIR>/video/filter/mvtools/ajn-mvtools.dll "{saved}/ajn-mvtools.dll"
     COMMAND ${{CMAKE_COMMAND}} -E copy <BINARY_DIR>/meson-info/intro-projectinfo.json "{saved}/meson-info/intro-projectinfo.json"
     COMMAND ${{CMAKE_COMMAND}} -E copy <BINARY_DIR>/meson-info/intro-buildoptions.json "{saved}/meson-info/intro-buildoptions.json"
     COMMENT "Preserving native addon build configuration before cleanup"
@@ -27,7 +31,10 @@ def prepare(script, toolchain):
 )
 cleanup(mpv save-addon-configuration)'''
     package.write_text(cmake.replace(cleanup, capture))
-    hook = '''    python "$AJN_METADATA_TOOL" --source "$srcdir/mpv" --libass-source "$srcdir/libass" \\
+    hook = '''    for dir in "$buildroot/build$bit"/mpv-dev-* "$buildroot/build$bit"/mpv-x86_64-*; do
+        cp "$buildroot/build$bit/ajn-addon-configuration/ajn-mvtools.dll" "$dir/" || exit 1
+    done
+    python "$AJN_METADATA_TOOL" --source "$srcdir/mpv" --libass-source "$srcdir/libass" \\
         --build "$buildroot/build$bit/ajn-addon-configuration" --binaries "$buildroot/build$bit"/mpv-* \\
         --output "$gitdir/release/mpv-addon-native-x86_64.json" --linkage static || exit 1
 '''

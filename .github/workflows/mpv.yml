@@ -116,6 +116,8 @@ jobs:
               throw new Error('Addon metadata requires one 64bit GPL build without additional PR patches');
             if (${{ inputs.addon_metadata }} && ${{ inputs.release }})
               throw new Error('Addon test builds require release=false');
+            if (${{ inputs.release }} && (process.env.MPV_REPOSITORY !== 'the-database/mpv' || process.env.LIBASS_REPOSITORY !== 'the-database/libass'))
+              throw new Error('Production releases require the-database/mpv and the-database/libass; use release=false for fork builds');
             const commit = await github.rest.repos.getCommit({
               ...source('MPV_REPOSITORY'),
               ref: process.env.MPV_REF
@@ -821,7 +823,8 @@ jobs:
         with:
           script: |
             const sha = `${{ needs.params.outputs.sha }}`;
-            let note = `**MPV Git commit**: https://github.com/mpv-player/mpv/commit/${sha}\n`;
+            let note = `**MPV Git commit**: https://github.com/${{ needs.params.outputs.mpv_repository }}/commit/${sha}\n`;
+            note += `**libass Git commit**: https://github.com/${{ needs.params.outputs.libass_repository }}/commit/${{ needs.params.outputs.libass_sha }}\n`;
             note+="**Build Time**: ${{ env.long_time }}\n";
             note+="**Compiler**: ${{ inputs.compiler }}\n";
             note+="**Build Details**: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}\n";

@@ -7,6 +7,13 @@ FONTCONFIG_REVISION = "b6cf4b270c42b13347a4012cdceb9bbc3d2e8f32"
 
 
 def prepare(toolchain, script):
+    # The addon host loads/unloads libmpv in-process. Match its tested lifetime
+    # behavior when OpenSSL is statically linked into the production artifact.
+    recipe = toolchain / "packages/openssl.cmake"
+    text = recipe.read_text()
+    if text.count("        no-shared\n") != 1:
+        raise RuntimeError("OpenSSL recipe changed; review addon DLL unload configuration")
+    recipe.write_text(text.replace("        no-shared\n", "        no-shared\n        no-pinshared\n"))
     recipe = toolchain / "packages/curl.cmake"
     text = recipe.read_text()
     # cd1edc11 has no patch command; do not assume a newer upstream recipe

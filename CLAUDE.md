@@ -23,7 +23,7 @@ Branch: `main`.
 
 `git diff --name-status upstream/main...main` touches the workflow, the two
 libplacebo patches it applies, and fork-only docs/tooling (`CLAUDE.md`, `test-build/`,
-`ajn-test-windows.yml`), and one fork-only patch:
+`ajn-test-windows.yml`, `notify-downstream.yml`), and one fork-only patch:
 `patch/0003-curl-fix-build-with-pinned-openssl-snapshot.patch`. It is needed because
 the toolchain pins OpenSSL to snapshot `d8bf6cdd`, which reports 4.1 but lacks
 `ASN1_STRING_get_length()`, while curl is built from master. It edits curl master, so it
@@ -35,7 +35,7 @@ Everything else — `build.sh`, the `patch/` series, `prunetags.sh`, `clean.yml`
 `toolchain.yml` — is unmodified upstream. **Do not document or change upstream behaviour
 here; send it upstream or carry it as a workflow edit.**
 
-### `.github/workflows/mpv.yml` — the five fork changes
+### `.github/workflows/mpv.yml` — the fork changes
 
 1. **Two new dispatch inputs** pin the fork sources:
    ```yaml
@@ -84,6 +84,8 @@ and the `<pkg>-prefix` subtree, a cached checkout silently ignores the pinned `G
 you get a stale build that looks successful. If a dispatch produces an unexpectedly old
 `libmpv-2.dll`, check these lines first.
 
+Also appended: a last job, `notify_downstream`, after `publish_release` (see Outputs).
+
 
 ## How to dispatch a Windows build
 
@@ -116,6 +118,7 @@ take roughly 20–65 minutes for a single `64bit` clang target.
 | `build_mpv` | `ubuntu-latest`, container `ghcr.io/archlinux/archlinux:base-devel`, `continue-on-error: true` | the real build |
 | `publish_release` | `ubuntu-latest`, `if: inputs.release == true` | creates the GitHub release |
 | `cache`, `cache_llvm` | `ubuntu-latest` | keep the toolchain/LLVM caches warm |
+| `notify_downstream` | `ubuntu-latest` (`notify-downstream.yml`), after `publish_release` | asks mpv-AnimeJaNai for a bump PR |
 
 `build_mpv` installs its toolchain with pacman:
 
@@ -156,7 +159,9 @@ The assembler consumes exactly two of the assets, by interpolated filename
 | `mpv-x86_64-<YYYYMMDD>-git-<hash>.7z` | `mpv.exe`, `mpv.com` only |
 
 so **three** constants in that repo must be bumped together after a dispatch, and they are
-three different spellings of the same build:
+three different spellings of the same build. The fork's `notify_downstream` job (after
+`publish_release`, via `notify-downstream.yml`; needs the `JANAI_BUMP_TOKEN` secret) has
+mpv-AnimeJaNai open a PR that sets all three from the release's archive names:
 
 ```csharp
 const string MpvForkVersion   = "2026-07-23-7fc08d90c7"; // the release tag

@@ -886,3 +886,12 @@ jobs:
           path: mpv-winbuild-cmake/clang_root
           key: llvm-
           restore-keys: llvm-
+
+  # AnimeJaNai fork addition: mpv-AnimeJaNai opens a PR that pins this build (MpvForkVersion and
+  # the archive date/hash; its bump-pins.yml). Called without a tag: publish_release just made the
+  # latest release.
+  notify_downstream:
+    name: Notify downstream
+    needs: publish_release
+    uses: ./.github/workflows/notify-downstream.yml
+    secrets: inherit

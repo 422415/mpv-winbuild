@@ -28,7 +28,7 @@ Windows system directory on PATH, and places those same DLLs beside the test
 executables before running Meson's suite. Licenses, file hashes and dependency
 metadata accompany the binaries. Artifacts expire after 14 days.
 
-The shared ggml base dependency is rebuilt from checksum-pinned 0.28.0 source
+The shared ggml base dependency is rebuilt from checksum-pinned 0.29.0 source
 with a small Windows DLL fix: it must not leave a process-wide C++ terminate
 handler pointing into unloaded code. This removes that shared-library hook;
 the application retains its handler and ggml's explicit assertion backtraces
@@ -39,7 +39,7 @@ patch for exact provenance. This does not change ordinary playback code or the
 static production build.
 
 The ggml version mismatch check is intentional: a newer rolling MSYS2 runtime
-must not be paired with unreviewed 0.28.0 replacement code. When that package
+must not be paired with unreviewed 0.29.0 replacement code. When that package
 changes, update the matching source version/commit/archive checksum, review the
 patch, and rerun the export and reload checks before updating the pin. The
 FFmpeg 6.1 callback check uses the immutable commit behind its release tag.

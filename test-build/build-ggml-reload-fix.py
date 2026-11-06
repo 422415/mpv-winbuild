@@ -16,9 +16,9 @@ import sys
 import tarfile
 import urllib.request
 
-VERSION = "0.28.0"
-COMMIT = "facdc44a67da17df4433adcc468b424f48e9ded2"
-ARCHIVE_SHA256 = "296a3533da2c6eaaac610008722572eb002a0f3b1aceb45b86a34f31ff4766c9"
+VERSION = "0.29.0"
+COMMIT = "57e2c2ca2a7cae756b1c4dfafa0cdfef9051d234"
+ARCHIVE_SHA256 = "b08d30d6685c5c90908e38dc279439fcc662b3b3f5a38c7bb2b447a31642c0f6"
 URL = f"https://github.com/ggml-org/ggml/archive/refs/tags/v{VERSION}.tar.gz"
 
 

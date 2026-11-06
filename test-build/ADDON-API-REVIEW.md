@@ -28,7 +28,7 @@ failure cannot hide warnings in those files. It also checks the mux callback
 against actual FFmpeg 6.1 headers. `prepare-test-runtime.py` stages the produced
 MVTools DLL beside each test executable before running the native suite.
 
-The MSYS2 shared runtime also rebuilds the matching ggml 0.28.0 base DLL with
+The MSYS2 shared runtime also rebuilds the matching ggml 0.29.0 base DLL with
 `ggml-shared-terminate.patch`. That DLL otherwise installs a process-wide C++
 terminate handler that survives unload and causes reload failures. The patch
 leaves the application's handler untouched in Windows shared builds; explicit

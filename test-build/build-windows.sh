@@ -21,9 +21,10 @@ for source in mpv-source libass-source libplacebo-source; do
     git -C "$source" diff --exit-code
 done
 
-# Test both patches carried by the release workflow against the 3.7.0 library.
+# Test the patches carried by the release workflow against the selected library.
 git -C libplacebo-source apply --ignore-space-change \
-    ../libplacebo-present-queue.patch ../libplacebo-nvidia-rtx-hdr.patch
+    ../libplacebo-present-queue.patch ../libplacebo-nvidia-rtx-hdr.patch \
+    ../libplacebo-nvidia-swapchain-recreate.patch
 meson setup build-placebo libplacebo-source --prefix="$prefix" --buildtype=release \
     --default-library=shared --wrap-mode=nodownload -Ddebug=true \
     -Dvulkan=enabled -Dopengl=enabled -Dd3d11=enabled -Dshaderc=enabled \
@@ -59,4 +60,5 @@ pacman -Q > native-output/build-info/msys2-packages.txt
 git -C mpv-source rev-parse HEAD > native-output/build-info/mpv-commit.txt
 git -C libass-source rev-parse HEAD > native-output/build-info/libass-commit.txt
 git -C libplacebo-source rev-parse HEAD > native-output/build-info/libplacebo-commit.txt
-cp libplacebo-present-queue.patch libplacebo-nvidia-rtx-hdr.patch native-output/build-info/
+cp libplacebo-present-queue.patch libplacebo-nvidia-rtx-hdr.patch \
+    libplacebo-nvidia-swapchain-recreate.patch native-output/build-info/

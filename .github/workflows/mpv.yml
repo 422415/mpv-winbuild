@@ -454,13 +454,15 @@ jobs:
           cp ../libplacebo-present-queue.patch packages/libplacebo-present-queue.patch
           # RTX HDR deadlocks with driver-managed queue locks on NVIDIA/Windows.
           cp ../libplacebo-nvidia-rtx-hdr.patch packages/libplacebo-nvidia-rtx-hdr.patch
-          sed -i '/^    UPDATE_COMMAND ""$/a\    PATCH_COMMAND ${CMAKE_COMMAND} -E chdir <SOURCE_DIR> git apply --ignore-space-change ${CMAKE_CURRENT_LIST_DIR}/libplacebo-present-queue.patch ${CMAKE_CURRENT_LIST_DIR}/libplacebo-nvidia-rtx-hdr.patch' packages/libplacebo.cmake
-          grep -Fq 'PATCH_COMMAND ${CMAKE_COMMAND} -E chdir <SOURCE_DIR> git apply --ignore-space-change ${CMAKE_CURRENT_LIST_DIR}/libplacebo-present-queue.patch ${CMAKE_CURRENT_LIST_DIR}/libplacebo-nvidia-rtx-hdr.patch' packages/libplacebo.cmake
+          # Drain/destroy NVIDIA Windows swapchains before replacement on mode changes.
+          cp ../libplacebo-nvidia-swapchain-recreate.patch packages/libplacebo-nvidia-swapchain-recreate.patch
+          sed -i '/^    UPDATE_COMMAND ""$/a\    PATCH_COMMAND ${CMAKE_COMMAND} -E chdir <SOURCE_DIR> git apply --ignore-space-change ${CMAKE_CURRENT_LIST_DIR}/libplacebo-present-queue.patch ${CMAKE_CURRENT_LIST_DIR}/libplacebo-nvidia-rtx-hdr.patch ${CMAKE_CURRENT_LIST_DIR}/libplacebo-nvidia-swapchain-recreate.patch' packages/libplacebo.cmake
+          grep -Fq 'PATCH_COMMAND ${CMAKE_COMMAND} -E chdir <SOURCE_DIR> git apply --ignore-space-change ${CMAKE_CURRENT_LIST_DIR}/libplacebo-present-queue.patch ${CMAKE_CURRENT_LIST_DIR}/libplacebo-nvidia-rtx-hdr.patch ${CMAKE_CURRENT_LIST_DIR}/libplacebo-nvidia-swapchain-recreate.patch' packages/libplacebo.cmake
           # Rebuild from a clean source so restored caches cannot skip the patch.
           rm -rf src_packages/libplacebo 2>/dev/null || true
           find build${{ matrix.bit }} -maxdepth 3 -type d -name 'libplacebo-prefix' -exec rm -rf {} + 2>/dev/null || true
-          git add packages/libplacebo.cmake packages/libplacebo-present-queue.patch packages/libplacebo-nvidia-rtx-hdr.patch && \
-            git -c user.name=ci -c user.email=ci@local commit -m "preserve Vulkan presentation order and avoid RTX HDR deadlock"
+          git add packages/libplacebo.cmake packages/libplacebo-present-queue.patch packages/libplacebo-nvidia-rtx-hdr.patch packages/libplacebo-nvidia-swapchain-recreate.patch && \
+            git -c user.name=ci -c user.email=ci@local commit -m "apply AJN Vulkan presentation and display transition workarounds"
           bash ../build.sh -t '${{ matrix.bit }}' -c '${{ inputs.compiler }}' -s "${{ matrix.lgpl == true && 'true' || 'false' }}"
       - name: Print failing package logs
         if: ${{ failure() }}

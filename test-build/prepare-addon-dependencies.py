@@ -29,6 +29,13 @@ def prepare(toolchain, script):
     text = recipe.read_text()
     if text.count("GIT_TAG main") != 1:
         raise RuntimeError("fontconfig recipe changed; review addon dependency preparation")
+    # shinchiro's reset_head.sh resets to @{u} unless a commit-pinned recipe
+    # also omits GIT_REMOTE_NAME (cmake/custom_steps.cmake); a pinned checkout
+    # is detached, so keeping the remote name fails every fontconfig rebuild.
+    remote = "    GIT_REMOTE_NAME origin\n"
+    if text.count(remote) != 1:
+        raise RuntimeError("fontconfig recipe changed; review addon dependency preparation")
+    text = text.replace(remote, "")
     recipe.write_text(text.replace("GIT_TAG main", "GIT_TAG " + FONTCONFIG_REVISION))
     for name in ("fontconfig-0001-Custom-changes-for-mpv-builds.patch", "fontconfig-0002-Do-not-use-dirent.h.patch"):
         shutil.copyfile(Path(__file__).with_name(name), toolchain / "packages" / name)

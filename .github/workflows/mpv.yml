@@ -502,6 +502,14 @@ jobs:
             git add packages/libaribcaption.cmake && \
               git -c user.name=ci -c user.email=ci@local commit -m "libaribcaption: use bundled MD5"
           fi
+          # mpv-release asks github.com for the latest tag once, at configure.
+          # A 5xx answer leaves the URL as archive/.tar.gz and fails the download,
+          # so retry it and match the header case-insensitively.
+          sed -i -e 's|curl -sI https://github.com/mpv-player/mpv/releases/latest|curl -sI --retry 5 --retry-all-errors --retry-delay 5 https://github.com/mpv-player/mpv/releases/latest|' \
+                 -e "s|grep 'location: https://github.com/mpv-player/mpv/releases'|grep -i 'location: https://github.com/mpv-player/mpv/releases'|" packages/mpv-release.cmake
+          grep -Fq 'curl -sI --retry 5' packages/mpv-release.cmake && grep -Fq "grep -i 'location:" packages/mpv-release.cmake
+          git add packages/mpv-release.cmake && \
+            git -c user.name=ci -c user.email=ci@local commit -m "mpv-release: retry the latest tag lookup"
           # Keep Vulkan presents ordered while render/compute queues rotate.
           cp ../libplacebo-present-queue.patch packages/libplacebo-present-queue.patch
           # RTX HDR deadlocks with driver-managed queue locks on NVIDIA/Windows.

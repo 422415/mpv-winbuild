@@ -6,6 +6,11 @@ main() {
     clang_root=$(pwd)/clang_root
     buildroot=$(pwd)
     srcdir=$(pwd)/src_packages
+    # Package steps run git inside src_packages/<name>. If a clone never
+    # happened, git would otherwise find this toolchain checkout above it and
+    # the force-update would reset it to @{u}, dropping the CI's committed
+    # recipe changes (or fail on a detached checkout).
+    export GIT_CEILING_DIRECTORIES=$srcdir
     local target=$1
     compiler=$2
     simple_package=$3
@@ -62,7 +67,8 @@ build() {
     fi
     cmake -Wno-dev --fresh -DTARGET_ARCH=$arch-w64-mingw32 $gcc_arch -DCOMPILER_TOOLCHAIN=$compiler "${clang_option[@]}" $extra_option -DENABLE_CCACHE=ON -DSINGLE_SOURCE_LOCATION=$srcdir -DRUSTUP_LOCATION=$buildroot/install_rustup -G Ninja -H$gitdir -B$buildroot/build$bit
 
-    ninja -C $buildroot/build$bit download || true
+    # -k 0: one failed download must not leave the remaining packages unfetched.
+    ninja -k 0 -C $buildroot/build$bit download || true
 
     if [ "$compiler" == "gcc" ] && [ ! -f "$buildroot/build$bit/install/bin/cross-gcc" ]; then
         ninja -C $buildroot/build$bit gcc && rm -rf $buildroot/build$bit/toolchain

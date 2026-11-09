@@ -1,6 +1,9 @@
 name: AJN Windows native test
 run-name: AJN native test - ${{ inputs.mpv_repository }} @ ${{ inputs.mpv_ref }}
 on:
+  push:
+    branches: [integration/addons]
+    paths: ['test-build/**', '.github/workflows/ajn-test-windows.yml']
   workflow_dispatch:
     inputs:
       mpv_repository:
@@ -46,24 +49,24 @@ jobs:
           Get-Service AudioEndpointBuilder, Audiosrv
       - uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.mpv_repository }}
-          ref: ${{ inputs.mpv_ref }}
+          repository: ${{ inputs.mpv_repository || format('{0}/mpv', github.repository_owner) }}
+          ref: ${{ inputs.mpv_ref || github.ref_name }}
           path: mpv-source
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.libass_repository }}
-          ref: ${{ inputs.libass_ref }}
+          repository: ${{ inputs.libass_repository || 'the-database/libass' }}
+          ref: ${{ inputs.libass_ref || 'master' }}
           path: libass-source
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: haasn/libplacebo
-          # Match the libplacebo revision shipped in AJN 3.7.0 so this test
-          # exercises the RTX HDR regression rather than MSYS2's older library.
-          ref: 0d043c7f6f79cd3687c023454bdacbe615e4d96f
+          # The synced mpv source requires libplacebo >= 7.387.0. Keep an exact
+          # version pin and exercise both AJN Vulkan patches on this source.
+          ref: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65 # v7.387.0
           path: libplacebo-source
           submodules: true
           persist-credentials: false
@@ -78,6 +81,8 @@ jobs:
             mingw-w64-ucrt-x86_64-meson
             mingw-w64-ucrt-x86_64-mpv
             mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-nodejs
+            mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-ffmpeg
@@ -92,6 +97,12 @@ jobs:
             mingw-w64-ucrt-x86_64-libarchive
             mingw-w64-ucrt-x86_64-lcms2
             mingw-w64-ucrt-x86_64-vulkan-headers
+      - uses: actions/checkout@v4
+        with:
+          repository: FFmpeg/FFmpeg
+          ref: d4ff0020b40b524a490cf62eccbd3a318f4c0e58 # n6.1
+          path: ffmpeg61-source
+          persist-credentials: false
       - name: Build and test pinned native components
         run: bash test-build/build-windows.sh
       - name: Upload native test package

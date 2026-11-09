@@ -25,6 +25,9 @@ available = {directory: {p.name.lower(): p for p in directory.glob('*.dll')}
 system = Path(os.environ['WINDIR']) / 'System32'
 system_names = {p.name.lower() for p in system.glob('*.dll')}
 queue = deque([prefix / 'bin/mpv.exe', prefix / 'bin/libmpv-2.dll'])
+mvtools = prefix / 'bin/ajn-mvtools.dll'
+if mvtools.is_file():
+    queue.append(mvtools)
 console = prefix / 'bin/mpv.com'
 if console.is_file():
     queue.append(console)
@@ -52,6 +55,8 @@ shutil.copy2('build-mpv/config.h', info / 'mpv-config.h')
 for name in ('intro-buildoptions.json', 'intro-dependencies.json'):
     shutil.copy2(Path('build-mpv/meson-info') / name, info / name)
 shutil.copytree(runtime / 'share/licenses', output / 'licenses/MSYS2', dirs_exist_ok=True)
+if mvtools.is_file():
+    shutil.copytree(prefix / 'share/licenses/ajn-mvtools', output / 'licenses/MVTools', dirs_exist_ok=True)
 for repo, files in {'mpv-source': ['Copyright', 'LICENSE.GPL', 'LICENSE.LGPL'],
                     'libass-source': ['COPYING']}.items():
     folder = output / 'licenses' / repo

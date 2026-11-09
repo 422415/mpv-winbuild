@@ -361,7 +361,10 @@ jobs:
           install_ccache: false
           restore_cache: ${{ inputs.needclean != true }}
           store_cache: ${{ matrix.lgpl != true && inputs.no_save_cache != true }}
-          override_cache_key: ccache-build${{ matrix.bit }}-${{ inputs.compiler }}
+          # compiler_check=none hashes only the wrapper script, not clang, so the
+          # addon leg's pinned LLVM must not share objects with master's newer LLVM
+          # (lld rejects newer thin-LTO bitcode with "Invalid record").
+          override_cache_key: ${{ inputs.addon_metadata && 'addon-' || '' }}ccache-build${{ matrix.bit }}-${{ inputs.compiler }}
           ccache_options: |
             cache_dir=${{ github.workspace }}/.ccache
             max_size=500M

@@ -19,7 +19,7 @@ class CurlPatchTests(unittest.TestCase):
             recipe.parent.mkdir()
             recipe.write_text('ExternalProject_Add(curl\n    PATCH_COMMAND ""\n    UPDATE_COMMAND ""\n)\n')
             fontconfig = recipe.with_name("fontconfig.cmake")
-            fontconfig.write_text('ExternalProject_Add(fontconfig\n    GIT_TAG main\n)\n')
+            fontconfig.write_text('ExternalProject_Add(fontconfig\n    GIT_REMOTE_NAME origin\n    GIT_TAG main\n)\n')
             openssl = recipe.with_name("openssl.cmake")
             openssl.write_text('ExternalProject_Add(openssl\n        no-shared\n)\n')
             recipe_module.prepare(root, Path(__file__).with_name("patch-curl-includes.py"))
@@ -27,6 +27,8 @@ class CurlPatchTests(unittest.TestCase):
             self.assertIn('PATCH_COMMAND ${EXEC} python "', recipe.read_text())
             self.assertIn('UPDATE_COMMAND ""', recipe.read_text())
             self.assertIn('GIT_TAG ' + recipe_module.FONTCONFIG_REVISION, fontconfig.read_text())
+            # A commit-pinned recipe must not name a remote: reset_head.sh would reset to @{u}.
+            self.assertNotIn('GIT_REMOTE_NAME', fontconfig.read_text())
             for patch in Path(__file__).parent.glob('fontconfig-*.patch'):
                 self.assertEqual(patch.read_bytes(), (recipe.parent / patch.name).read_bytes())
 

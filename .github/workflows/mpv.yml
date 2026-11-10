@@ -224,7 +224,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/archlinux/archlinux:base-devel
-    continue-on-error: ${{ inputs.addon_metadata != true }}
+    continue-on-error: ${{ inputs.addon_metadata != true && (matrix.lgpl == true || (matrix.bit != '64' && matrix.bit != '64-v3')) }}
     strategy:
       matrix: ${{ fromJson(needs.params.outputs.matrix) }}
 
@@ -237,7 +237,7 @@ jobs:
           sudo pacman -Syu --noconfirm
           sudo pacman -S --noconfirm --needed git ninja cmake meson clang lld libc++ unzip ragel yasm nasm gperf rst2pdf lib32-gcc-libs lib32-glib2 python-cairo curl wget mimalloc ccache python-pip 7zip shaderc
           # test-build/test_addon_release.py runs the release workflow's JavaScript with Node.js.
-          if [ '${{ inputs.addon_metadata }}' = 'true' ]; then sudo pacman -S --noconfirm --needed nodejs; fi
+          sudo pacman -S --noconfirm --needed nodejs
           sudo python -m pip install --break-system-packages roman
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -449,8 +449,8 @@ jobs:
           AJN_METADATA_TOOL: ${{ github.workspace }}/test-build/produce-native-metadata.py
         run: |
           chmod +x build.sh
+          python -B -m unittest discover -s test-build -p 'test_*.py'
           if [ '${{ inputs.addon_metadata }}' = 'true' ]; then
-            python -B -m unittest discover -s test-build -p 'test_*.py'
             python test-build/prepare-addon-build.py
           fi
           cd mpv-winbuild-cmake

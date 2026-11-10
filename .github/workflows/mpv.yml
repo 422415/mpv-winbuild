@@ -465,6 +465,12 @@ jobs:
           if [ "${{ matrix.lgpl }}" = "true" ]; then
             git am --3way ../compile-lgpl-libmpv.patch
           fi
+          # Built-in experimental RIFE detection is independent of addon support.
+          # Only the x64 GPL builds have the required Windows/CUDA bridge.
+          if [ '${{ inputs.addon_metadata }}' != 'true' ] && [ '${{ matrix.lgpl }}' != 'true' ] &&
+             { [ '${{ matrix.bit }}' = '64' ] || [ '${{ matrix.bit }}' = '64-v3' ]; }; then
+            python ../test-build/prepare-rife-build.py packages/mpv.cmake
+          fi
           # Use the-database/mpv as the mpv source (carries the seek-speedup
           # patch). Must run AFTER zhongfly's patch series (they also touch
           # mpv.cmake) and BEFORE the build, so commit as a normal change.

@@ -11,6 +11,10 @@ spec = importlib.util.spec_from_file_location("prepare", Path(__file__).with_nam
 prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
 
+spec = importlib.util.spec_from_file_location("rife", Path(__file__).with_name("prepare-rife-build.py"))
+rife = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(rife)
+
 
 class PreparationTests(unittest.TestCase):
     def setUp(self):
@@ -76,6 +80,46 @@ cleanup(mpv copy-package-dir)
         with self.assertRaisesRegex(RuntimeError, "cleanup changed"):
             prepare.prepare(self.script, self.toolchain)
         self.assertFalse(self.script.with_name("build-addons.sh").exists())
+
+    def test_ordinary_rife_package_contains_detector_and_licenses(self):
+        fixture = self.toolchain / "fixture"
+        source = fixture / "video/filter/mvtools"
+        source.mkdir(parents=True)
+        for name in ("ajn-mvtools.dll", "LICENSE", "UPSTREAM.md"):
+            (source / name).write_text("fixture " + name)
+        (self.toolchain / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.20)
+project(RifePackage NONE)
+include(ExternalProject)
+include(packages/mpv.cmake)
+''')
+        self.package.write_text('''set(mpv_options -Dlibmpv=true)
+ExternalProject_Add(mpv
+    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/fixture"
+    DOWNLOAD_COMMAND "" UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR> <BINARY_DIR>
+    BUILD_COMMAND ${CMAKE_COMMAND} -E true
+    INSTALL_COMMAND ${CMAKE_COMMAND} -E true)
+ExternalProject_Add_Step(mpv copy-binary
+    DEPENDEES install
+    COMMENT "Copying mpv binaries and manual")
+ExternalProject_Add_Step(mpv cleanup
+    DEPENDEES copy-binary
+    COMMAND ${CMAKE_COMMAND} -E rm -rf <BINARY_DIR>)
+''')
+        rife.prepare(self.package)
+        cmake, ninja = shutil.which("cmake"), shutil.which("ninja")
+        self.assertIsNotNone(cmake)
+        self.assertIsNotNone(ninja)
+        build = self.root / "build"
+        for command in ([cmake, "-S", str(self.toolchain), "-B", str(build), "-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=" + ninja],
+                        [cmake, "--build", str(build)]):
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for package in ("mpv-package", "mpv-dev"):
+            for name in ("ajn-mvtools.dll", "LICENSE", "UPSTREAM.md"):
+                relative = name if name.endswith(".dll") else "licenses/mvtools/" + name
+                self.assertEqual((build / package / relative).read_bytes(), (source / name).read_bytes())
+        self.assertIn("-Dajn-mvtools=true", self.package.read_text())
 
 
 if __name__ == "__main__":
